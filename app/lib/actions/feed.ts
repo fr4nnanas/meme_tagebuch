@@ -133,6 +133,81 @@ export async function fetchPostsAction(
   }
 }
 
+export async function fetchPostDetailAction(
+  postId: string,
+): Promise<{ post: PostWithDetails | null; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { post: null, error: "Nicht angemeldet" };
+
+    const { data: p, error: postError } = await supabase
+      .from("posts")
+      .select(
+        "id, user_id, project_id, caption, meme_image_url, original_image_url, meme_type, created_at, users!user_id(username, avatar_url)",
+      )
+      .eq("id", postId)
+      .maybeSingle();
+
+    if (postError || !p) {
+      return { post: null, error: postError?.message ?? "Post nicht gefunden" };
+    }
+
+    const [{ data: likesRaw }, { data: commentsRaw }] = await Promise.all([
+      supabase.from("post_likes").select("post_id, user_id").eq("post_id", postId),
+      supabase.from("comments").select("post_id").eq("post_id", postId),
+    ]);
+
+    let signedUrl: string | null = null;
+    if (p.meme_image_url) {
+      const { data: signedUrls } = await supabase.storage
+        .from("memes")
+        .createSignedUrls([p.meme_image_url], 3600);
+      signedUrl = signedUrls?.[0]?.signedUrl ?? null;
+    } else if (p.original_image_url) {
+      const { data: signedUrls } = await supabase.storage
+        .from("originals")
+        .createSignedUrls([p.original_image_url], 3600);
+      signedUrl = signedUrls?.[0]?.signedUrl ?? null;
+    }
+
+    let like_count = 0;
+    let liked_by_me = false;
+    for (const like of likesRaw ?? []) {
+      like_count++;
+      if (like.user_id === user.id) liked_by_me = true;
+    }
+
+    const rawUser = p.users;
+    const userInfo = Array.isArray(rawUser) ? rawUser[0] : rawUser;
+
+    const post: PostWithDetails = {
+      id: p.id,
+      user_id: p.user_id,
+      project_id: p.project_id,
+      caption: p.caption,
+      meme_image_url: p.meme_image_url,
+      meme_type: p.meme_type,
+      created_at: p.created_at,
+      user: {
+        username: (userInfo as PostUser | null)?.username ?? "Unbekannt",
+        avatar_url: (userInfo as PostUser | null)?.avatar_url ?? null,
+      },
+      like_count,
+      liked_by_me,
+      comment_count: (commentsRaw ?? []).length,
+      signed_url: signedUrl,
+    };
+
+    return { post };
+  } catch (err) {
+    console.error("[fetchPostDetailAction]", err);
+    return { post: null, error: "Fehler beim Laden des Posts" };
+  }
+}
+
 export async function togglePostLikeAction(
   postId: string,
 ): Promise<{ liked: boolean; like_count: number; error?: string }> {

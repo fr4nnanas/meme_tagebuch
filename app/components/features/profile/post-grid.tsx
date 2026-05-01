@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { ImageIcon, Loader2, Trash2, X } from "lucide-react";
+import { ImageIcon, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { deletePostAction } from "@/lib/actions/feed";
+import { ProfilePostDetailSheet } from "@/components/features/profile/profile-post-detail-sheet";
 import { useActiveProject } from "@/components/features/app/project-context";
-
 interface PostGridProps {
   userId: string;
+  /** Eingeloggter Nutzer – für Likes, Kommentare, Caption im Detail */
+  currentUserId: string;
   isOwner?: boolean;
 }
 
@@ -27,10 +29,11 @@ interface FetchResult {
   error: string | null;
 }
 
-export function PostGrid({ userId, isOwner = false }: PostGridProps) {
+export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridProps) {
   const { activeProjectId, activeProject, projects } = useActiveProject();
   const [result, setResult] = useState<FetchResult | null>(null);
-  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [detailPostId, setDetailPostId] = useState<string | null>(null);
+  const [detailFallbackSrc, setDetailFallbackSrc] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [, startDeleteTransition] = useTransition();
 
@@ -187,7 +190,10 @@ export function PostGrid({ userId, isOwner = false }: PostGridProps) {
                   src={displaySrc}
                   alt="Post"
                   loading="lazy"
-                  onClick={() => !isPending && setLightboxSrc(displaySrc)}
+                  onClick={() => {
+                    setDetailPostId(post.id);
+                    setDetailFallbackSrc(displaySrc);
+                  }}
                   className={`h-full w-full object-cover transition-opacity ${
                     isPending ? "opacity-50" : "cursor-pointer active:opacity-75"
                   }`}
@@ -227,29 +233,15 @@ export function PostGrid({ userId, isOwner = false }: PostGridProps) {
         })}
       </div>
 
-      {/* Lightbox */}
-      {lightboxSrc && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
-          onClick={() => setLightboxSrc(null)}
-        >
-          <button
-            type="button"
-            onClick={() => setLightboxSrc(null)}
-            aria-label="Schließen"
-            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-zinc-800/80 text-zinc-200 hover:bg-zinc-700"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={lightboxSrc}
-            alt="Meme"
-            onClick={(e) => e.stopPropagation()}
-            className="max-h-[90vh] max-w-full rounded-xl object-contain shadow-2xl"
-          />
-        </div>
-      )}
+      <ProfilePostDetailSheet
+        postId={detailPostId}
+        fallbackImageSrc={detailFallbackSrc}
+        currentUserId={currentUserId}
+        onClose={() => {
+          setDetailPostId(null);
+          setDetailFallbackSrc(null);
+        }}
+      />
     </>
   );
 }

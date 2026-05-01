@@ -29,6 +29,10 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
   }
 
   return (
-    <ProfileView profile={profile} isOwner={user.id === profile.id} />
+    <ProfileView
+      profile={profile}
+      isOwner={user.id === profile.id}
+      currentUserId={user.id}
+    />
   );
 }

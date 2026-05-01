@@ -17,9 +17,11 @@ export interface ProfileViewProps {
     role: string;
   };
   isOwner: boolean;
+  /** Eingeloggter Nutzer (für Feed-Aktionen im Profilpost-Overlay) */
+  currentUserId: string;
 }
 
-export function ProfileView({ profile, isOwner }: ProfileViewProps) {
+export function ProfileView({ profile, isOwner, currentUserId }: ProfileViewProps) {
   const [editOpen, setEditOpen] = useState(false);
 
   return (
@@ -88,7 +90,11 @@ export function ProfileView({ profile, isOwner }: ProfileViewProps) {
       </div>
 
       <div className="mt-6">
-        <PostGrid userId={profile.id} isOwner={isOwner} />
+        <PostGrid
+          userId={profile.id}
+          currentUserId={currentUserId}
+          isOwner={isOwner}
+        />
       </div>
 
       <EditProfileModal
