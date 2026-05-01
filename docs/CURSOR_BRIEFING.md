@@ -222,7 +222,7 @@ Jedes Paket muss vollständig getestet sein, bevor das nächste beginnt.
 
 ---
 
-## Paket 8 – ZIP-Expor
+### Paket 8 – ZIP-Expor
 
 **Ziel:** Ganzen Urlaub als offline-fähiges ZIP exportieren.
 
