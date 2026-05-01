@@ -1,0 +1,160 @@
+"use client";
+
+import { useCallback, useRef, useState } from "react";
+import ReactCrop, {
+  centerCrop,
+  makeAspectCrop,
+  type Crop,
+  type PixelCrop,
+} from "react-image-crop";
+import "react-image-crop/dist/ReactCrop.css";
+import { Crop as CropIcon } from "lucide-react";
+
+// 2:3 Seitenverhältnis (Portrait) – passend zur OpenAI-Ausgabe 1024x1536
+const ASPECT_RATIO = 2 / 3;
+// Ausgabegröße des gecropten Bildes
+const OUTPUT_WIDTH = 1024;
+const OUTPUT_HEIGHT = 1536;
+
+interface ImageCropperProps {
+  imageSrc: string;
+  onCropComplete: (blob: Blob) => void;
+  onCancel: () => void;
+}
+
+async function getCroppedBlob(
+  image: HTMLImageElement,
+  pixelCrop: PixelCrop,
+): Promise<Blob> {
+  // react-image-crop: PixelCrop bezieht sich auf die angezeigte Größe (clientWidth/Height).
+  // drawImage erwartet Koordinaten in natürlichen Bildpixeln — sonst nur ein kleiner
+  // Ausschnitt der Quelle → „stark reingezoomt“ bei Handy-Fotos.
+  const displayW = image.clientWidth || image.width;
+  const displayH = image.clientHeight || image.height;
+  if (!displayW || !displayH || !image.naturalWidth || !image.naturalHeight) {
+    throw new Error("Bildmaße nicht verfügbar");
+  }
+  const scaleX = image.naturalWidth / displayW;
+  const scaleY = image.naturalHeight / displayH;
+
+  const sx = pixelCrop.x * scaleX;
+  const sy = pixelCrop.y * scaleY;
+  const sWidth = pixelCrop.width * scaleX;
+  const sHeight = pixelCrop.height * scaleY;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = OUTPUT_WIDTH;
+  canvas.height = OUTPUT_HEIGHT;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas context nicht verfügbar");
+
+  ctx.drawImage(
+    image,
+    sx,
+    sy,
+    sWidth,
+    sHeight,
+    0,
+    0,
+    OUTPUT_WIDTH,
+    OUTPUT_HEIGHT,
+  );
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Canvas konnte nicht als Blob exportiert werden"));
+      },
+      "image/jpeg",
+      0.92,
+    );
+  });
+}
+
+export function ImageCropper({
+  imageSrc,
+  onCropComplete,
+  onCancel,
+}: ImageCropperProps) {
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [crop, setCrop] = useState<Crop>();
+  const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const onImageLoad = useCallback(
+    (e: React.SyntheticEvent<HTMLImageElement>) => {
+      const { width, height } = e.currentTarget;
+      // Zentrierter, erzwungener 2:3-Crop
+      const centered = centerCrop(
+        makeAspectCrop({ unit: "%", width: 90 }, ASPECT_RATIO, width, height),
+        width,
+        height,
+      );
+      setCrop(centered);
+    },
+    [],
+  );
+
+  const handleConfirm = useCallback(async () => {
+    if (!imgRef.current || !completedCrop) return;
+    setIsProcessing(true);
+
+    try {
+      const blob = await getCroppedBlob(imgRef.current, completedCrop);
+      onCropComplete(blob);
+    } catch (err) {
+      console.error("Crop fehlgeschlagen:", err);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [completedCrop, onCropComplete]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-2 text-sm text-zinc-400">
+        <CropIcon className="h-4 w-4 text-orange-500" />
+        <span>Bild auf 2:3 zuschneiden – Rahmen verschieben oder skalieren</span>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-zinc-800">
+        <ReactCrop
+          crop={crop}
+          onChange={(c) => setCrop(c)}
+          onComplete={(c) => setCompletedCrop(c)}
+          aspect={ASPECT_RATIO}
+          minWidth={60}
+          keepSelection
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            ref={imgRef}
+            src={imageSrc}
+            alt="Zu schneidendes Foto"
+            className="max-h-[60vh] w-full object-contain"
+            onLoad={onImageLoad}
+          />
+        </ReactCrop>
+      </div>
+
+      <div className="flex gap-3">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 rounded-full border border-zinc-700 py-3 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
+        >
+          Abbrechen
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleConfirm()}
+          disabled={!completedCrop || isProcessing}
+          className="flex-1 rounded-full bg-orange-500 py-3 text-sm font-semibold text-white transition-colors hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isProcessing ? "Verarbeite..." : "Zuschnitt übernehmen"}
+        </button>
+      </div>
+    </div>
+  );
+}

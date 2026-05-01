@@ -1,0 +1,178 @@
+# .cursorrules – Urlaubs-Meme-Tagebuch
+
+Du bist ein Senior Full-Stack Entwickler, spezialisiert auf Next.js (App Router), React,
+Tailwind CSS, TypeScript und Supabase. Wir bauen eine Mobile-First Web-App
+("Urlaubs-Meme-Tagebuch"), die ähnlich wie Instagram funktioniert – aber mit KI-Meme-
+Generierung als Herzstück.
+
+---
+
+## Projektkontext
+
+- Jeder "Urlaub" ist ein isoliertes Projekt mit eigenem Feed
+- User können Mitglied in mehreren Projekten sein
+- Registrierung nur über Einladungstoken (generiert vom Admin)
+- Der erste registrierte User wird automatisch Admin
+- Alle Bilder werden zwingend im 3:4-Format verarbeitet
+
+---
+
+## Technologie-Stack
+
+- **Framework:** Next.js 15 mit App Router und TypeScript
+- **Styling:** Tailwind CSS – ausschließlich Tailwind, kein inline-style, kein CSS-Modul
+- **Datenbank + Auth + Storage:** Supabase
+- **KI Text/Vision:** OpenAI `gpt-4o`
+- **KI Bildgenerierung:** OpenAI `gpt-image-2`
+- **Karte:** react-leaflet mit OpenStreetMap
+- **Icons:** ausschließlich `lucide-react`
+- **Notifications/Toasts:** `sonner`
+
+---
+
+## Coding-Regeln (strikt einhalten)
+
+### TypeScript
+- Niemals `any` verwenden – immer korrekte Typen oder `unknown`
+- Datenbanktypen kommen aus `@/lib/database.types.ts` (Supabase-generiert)
+- Props-Interfaces immer benennen: `interface ButtonProps { ... }`
+
+### Next.js Komponenten
+- Server Components sind der Standard – `"use client"` nur wenn zwingend nötig
+  (Event Handler, useState, useEffect, Browser APIs)
+- Daten in Server Components direkt mit dem Supabase Server Client fetchen
+- Keine `useEffect`-Fetches wenn eine Server Component es lösen kann
+
+### Supabase
+- Browser Client (`@/lib/supabase/client.ts`) → nur in Client Components
+- Server Client (`@/lib/supabase/server.ts`) → Server Components, Server Actions, Route Handlers
+- Niemals den `service_role`-Key im Client-Code verwenden
+- RLS ist die primäre Sicherheitsschicht – Frontend-Guards sind nur UI
+
+### OpenAI / KI-Aufrufe
+- ALLE OpenAI-API-Aufrufe ausschließlich in `/app/api/` Route Handlers
+- Niemals den OpenAI-Key im Client-Code oder in `"use client"`-Komponenten verwenden
+- Modell für Text/Vision: `gpt-4o`
+- Modell für Bildgenerierung: `gpt-image-2`
+
+### Fehlerbehandlung
+- Jeder Server Action / Route Handler hat try/catch
+- Fehler immer als strukturiertes Objekt zurückgeben: `{ error: string }`
+- Im UI immer Toast-Notifications via `sonner` anzeigen (nie stille Fehler)
+
+---
+
+## Design-Regeln (strikt einhalten)
+
+### Mobile First
+- Alle Komponenten zuerst für 390px entwerfen
+- Responsive Breakpoints: `sm:` für 640px, `md:` für 768px, `lg:` für 1024px
+- Touch-Targets mindestens 44x44px
+
+### Visueller Stil
+- **Dark Mode als Standard** (dunkler Hintergrund, helle Schrift)
+- Primärfarbe: Orange (`orange-500` / `orange-400` für Hover)
+- Hintergrund: `zinc-950`, Karten/Surfaces: `zinc-900`, Borders: `zinc-800`
+- Text: `zinc-100` (primär), `zinc-400` (sekundär)
+- Rounded Corners: `rounded-xl` für Karten, `rounded-full` für Buttons/Avatare
+- Keine eckigen Designs, großzügige Abstände (`gap-4`, `p-4`)
+
+### Navigation
+- **Bottom Navigation Bar** als primäre Navigation (wie Instagram, 5 Tabs)
+- Tabs: Feed | Karte | Upload (mittig, größer) | Profil | Admin (nur für admin-Rolle)
+- Kein klassisches Header-Menü auf Mobile
+
+### Bilder
+- Alle Post-Bilder immer im **3:4-Seitenverhältnis** anzeigen (`aspect-[3/4]`)
+- Profilbilder immer als Kreis (`rounded-full`)
+
+---
+
+## Dateistruktur-Konventionen
+
+```
+/app
+  /api/              → Route Handlers (KI-Aufrufe, Export)
+  /(auth)/           → Öffentliche Seiten (login, register)
+  /(app)/            → Geschützte Seiten (feed, upload, profile, map, admin)
+/components
+  /ui/               → Kleine, wiederverwendbare UI-Elemente (Button, Card, etc.)
+  /features/         → Feature-spezifische Komponenten (FeedCard, MemeUpload, etc.)
+/lib
+  /supabase/
+    client.ts        → Browser Supabase Client
+    server.ts        → Server Supabase Client
+  database.types.ts  → Auto-generierte Supabase-Typen
+/hooks/              → Custom React Hooks (useProject, useUser, etc.)
+```
+
+---
+
+## Die zwei Meme-Typen
+
+### Typ A – KI-Vollbild (`meme_type = 'ai_generated'`)
+- Original-Foto → `gpt-image-2` → komplett neues Meme-Bild
+- **Limitiert:** 5 Generierungen pro User pro Tag (aus `settings.daily_ai_image_limit`)
+- Limit prüfen VOR dem API-Aufruf, Verbrauch in `daily_usage`-Tabelle tracken
+- Immer 2 Varianten generieren, User wählt eine
+
+### Typ B – Canvas-Overlay (`meme_type = 'canvas_overlay'`)
+- `gpt-4o` analysiert Foto → gibt JSON zurück: `{ top: string | null, bottom: string }`
+- HTML5 Canvas klebt Text auf Originalbild (schwarz/weißer Text mit Shadow)
+- **Unlimitiert** – kein Bildgenerierungs-Kontingent verbraucht
+- Immer als Option sichtbar, unabhängig vom Typ-A-Limit
+
+---
+
+## Die zwei KI-Pipelines
+
+### Pipeline A – Direkt
+Foto (+ optionaler User-Text) → direkt an KI → 2 Varianten
+
+### Pipeline B – Assistiert
+Foto → `gpt-4o` Vision → 4 Meme-Ideen als Text → User wählt eine → KI → 2 Varianten
+
+---
+
+## Asynchrone Job-Verarbeitung
+
+KI-Aufrufe dauern 10–30 Sekunden. Daher immer:
+1. `posts`-Eintrag mit `meme_image_url = null` anlegen
+2. `jobs`-Eintrag mit `status = 'pending'` anlegen
+3. KI-Aufruf starten (non-blocking)
+4. Globaler Ladebalken im UI (User kann wegnavigieren)
+5. Polling alle 3 Sekunden auf `jobs.status`
+6. Bei `completed`: Toast-Notification + `posts.meme_image_url` updaten
+
+Job-Status-Werte: `pending` | `processing` | `completed` | `failed`
+
+---
+
+## Supabase Storage
+
+| Bucket     | Zugang   | Pfadstruktur                        |
+|------------|----------|-------------------------------------|
+| `avatars`  | Public   | `/{user_id}/avatar.jpg`             |
+| `originals`| Privat   | `/{project_id}/{user_id}/{post_id}.jpg` |
+| `memes`    | Privat   | `/{project_id}/{user_id}/{post_id}.jpg` |
+
+---
+
+## Kommentar-Stil
+
+- Kommentare auf Deutsch
+- Nur nicht-offensichtliche Logik kommentieren
+- Keine Kommentare die nur wiederholen was der Code tut
+- Komplexe Business-Logik (z.B. Limit-Prüfung, Job-Flow) mit kurzem Kommentar erklären
+
+---
+
+## Was NIEMALS tun
+
+- `any` in TypeScript verwenden
+- OpenAI-Aufrufe im Client-Code
+- `service_role`-Key im Frontend verwenden
+- Inline-Styles statt Tailwind
+- `useEffect` für Datenfetching wenn Server Component möglich
+- Hardcoded Strings für Supabase-URL oder API-Keys (immer `process.env`)
+- `console.log` in Production-Code (nur `console.error` für echte Fehler)

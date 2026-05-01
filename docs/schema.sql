@@ -24,11 +24,12 @@ CREATE TABLE public.users (
 
 -- Projekte (= Urlaube)
 CREATE TABLE public.projects (
-  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  name        TEXT NOT NULL,
-  description TEXT,
-  created_by  UUID NOT NULL REFERENCES public.users(id),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name                TEXT NOT NULL,
+  description         TEXT,
+  ai_prompt_context   TEXT,          -- Optionaler Kontext/Masterprompt für KI-Meme-Generierung
+  created_by          UUID NOT NULL REFERENCES public.users(id),
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Projekt-Mitgliedschaften (viele-zu-viele: User <-> Projekte)
@@ -52,8 +53,8 @@ CREATE TABLE public.posts (
   -- Canvas-Overlay Texte (nur relevant wenn meme_type = 'canvas_overlay')
   overlay_text_top    TEXT,
   overlay_text_bottom TEXT,
-  -- Pipeline: 'direct' (Pipeline A) oder 'assisted' (Pipeline B)
-  pipeline            TEXT NOT NULL CHECK (pipeline IN ('direct', 'assisted')),
+  -- Pipeline: 'direct', 'assisted' oder 'manual' (Text-Overlay nur Nutzertext)
+  pipeline            TEXT NOT NULL CHECK (pipeline IN ('direct', 'assisted', 'manual')),
   -- Caption (manuell oder KI-generiert, nachträglich editierbar)
   caption             TEXT,
   -- GPS-Koordinaten aus EXIF-Daten (können NULL sein wenn kein GPS im Foto)

@@ -1,0 +1,42 @@
+{
+  "name": "app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "seed:invite": "node --env-file=.env.local scripts/seed-invitation-token.mjs",
+    "gen:types": "supabase --workdir .. gen types typescript --linked > lib/database.types.ts",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.105.1",
+    "exifr": "^7.1.3",
+    "file-saver": "^2.0.5",
+    "jszip": "^3.10.1",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.14.0",
+    "next": "16.2.4",
+    "openai": "^6.35.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-image-crop": "^11.0.10",
+    "react-leaflet": "^5.0.0",
+    "react-leaflet-cluster": "^4.1.3",
+    "sonner": "^2.0.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/file-saver": "^2.0.7",
+    "@types/leaflet": "^1.9.21",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.4",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
