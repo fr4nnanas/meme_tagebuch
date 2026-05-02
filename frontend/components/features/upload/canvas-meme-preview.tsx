@@ -20,6 +20,8 @@ const CANVAS_H = 1536;
 const MAX_LINES_TOP = 2;
 /** Unten: etwas mehr Platz für längere Pointen. */
 const MAX_LINES_BOTTOM = 3;
+/** Wenn alles in einem Block nur „unten“ ankommt: gesamte Bildhöhe nutzen (oben + unten). */
+const MAX_COMBINED_LINES = MAX_LINES_TOP + MAX_LINES_BOTTOM;
 /**
  * Meme-Schrift (Impact) ist sehr breit – schmaler messen, damit früher umgebrochen wird.
  */
@@ -54,6 +56,39 @@ function ellipsizeLine(
   return text.slice(0, Math.max(0, low)) + ell;
 }
 
+/** Ein zu langes Wort (URL, Zusammensetzung) zeichenweise auf mehrere Zeilen verteilen. */
+function breakLongWordToLines(
+  ctx: CanvasRenderingContext2D,
+  word: string,
+  maxWidth: number,
+  maxLines: number,
+): string[] {
+  if (maxLines <= 0) return [];
+  const out: string[] = [];
+  let rest = word;
+  while (rest.length > 0 && out.length < maxLines) {
+    if (ctx.measureText(rest).width <= maxWidth) {
+      out.push(rest);
+      break;
+    }
+    let low = 1;
+    let high = rest.length;
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      if (ctx.measureText(rest.slice(0, mid)).width <= maxWidth) low = mid;
+      else high = mid - 1;
+    }
+    const take = Math.max(1, low);
+    out.push(rest.slice(0, take));
+    rest = rest.slice(take);
+  }
+  if (rest.length > 0 && out.length > 0) {
+    const last = out.length - 1;
+    out[last] = ellipsizeLine(ctx, out[last]! + rest, maxWidth);
+  }
+  return out;
+}
+
 /** Wörter umbrechen (OHNE \n-Segmentierung). */
 function wrapWordsToLines(
   ctx: CanvasRenderingContext2D,
@@ -71,7 +106,9 @@ function wrapWordsToLines(
   while (i < words.length && lines.length < maxLines) {
     const word = words[i]!;
     if (ctx.measureText(word).width > w) {
-      lines.push(ellipsizeLine(ctx, word, w));
+      const budget = maxLines - lines.length;
+      const parts = breakLongWordToLines(ctx, word, w, budget);
+      lines.push(...parts);
       i++;
       continue;
     }
@@ -186,15 +223,34 @@ export function CanvasMemePreview({
 
       setMemeFont(ctx, fontSize);
 
-      const topLines = overlayTextTop
-        ? wrapMemeLines(ctx, overlayTextTop, maxTextWidth, MAX_LINES_TOP)
-        : [];
-      const bottomLines = wrapMemeLines(
-        ctx,
-        overlayTextBottom || "",
-        maxTextWidth,
-        MAX_LINES_BOTTOM,
-      );
+      const topTrim = overlayTextTop?.trim() ?? "";
+      const bottomTrim = (overlayTextBottom || "").trim();
+
+      /** Nur ein Bereich befüllt (typisch: eine Zeile ohne \n → alles „unten“): gesamte Fläche nutzen. */
+      const useCombinedVertical =
+        (!topTrim && bottomTrim) || (topTrim && !bottomTrim);
+
+      let topLines: string[] = [];
+      let bottomLines: string[] = [];
+
+      if (useCombinedVertical) {
+        const block = topTrim || bottomTrim;
+        const all = wrapMemeLines(
+          ctx,
+          block,
+          maxTextWidth,
+          MAX_COMBINED_LINES,
+        );
+        topLines = all.slice(0, MAX_LINES_TOP);
+        bottomLines = all.slice(MAX_LINES_TOP, MAX_COMBINED_LINES);
+      } else {
+        topLines = topTrim
+          ? wrapMemeLines(ctx, topTrim, maxTextWidth, MAX_LINES_TOP)
+          : [];
+        bottomLines = bottomTrim
+          ? wrapMemeLines(ctx, bottomTrim, maxTextWidth, MAX_LINES_BOTTOM)
+          : [];
+      }
 
       // Oben: erste Zeile mit Abstand zur oberen Kante, bis zu 2 Zeilen nach unten
       if (topLines.length > 0) {

@@ -81,6 +81,14 @@ const MODE_LABEL: Record<PostingMode, string> = {
   fully_manual: "Alles selbst",
 };
 
+/** History-State für den Upload-Assistenten – Browser-Zurück = Wizard zurück statt Seite verlassen */
+type UploadHistoryStep = Exclude<Step, "select">;
+
+function pushUploadHistoryStep(step: UploadHistoryStep) {
+  if (typeof window === "undefined") return;
+  window.history.pushState({ uploadStep: step }, "", window.location.href);
+}
+
 export function UploadFlow() {
   const router = useRouter();
   const { activeProjectId } = useActiveProject();
@@ -100,6 +108,40 @@ export function UploadFlow() {
   const [dailyUsed, setDailyUsed] = useState<number | null>(null);
   const [dailyLimit, setDailyLimit] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const onPopState = (event: PopStateEvent) => {
+      const uploadStep = event.state?.uploadStep as UploadHistoryStep | undefined;
+
+      if (uploadStep === "crop") {
+        setStep("crop");
+        return;
+      }
+      if (uploadStep === "chooseMode") {
+        setStep("chooseMode");
+        return;
+      }
+      if (uploadStep === "configure") {
+        setStep("configure");
+        return;
+      }
+      if (uploadStep === "submitting") {
+        setStep("submitting");
+        return;
+      }
+
+      setStep("select");
+      setImageSrc(null);
+      setCroppedBlob(null);
+      setPostingMode(null);
+      setUserText("");
+      setCaptions([]);
+      setSelectedCaption(null);
+    };
+
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   useEffect(() => {
     if (!activeProjectId) return;
@@ -124,6 +166,7 @@ export function UploadFlow() {
     const dataUrl = await fileToDataUrl(file);
     setImageSrc(dataUrl);
     setStep("crop");
+    pushUploadHistoryStep("crop");
   }, []);
 
   const handleCropComplete = useCallback((blob: Blob) => {
@@ -133,6 +176,7 @@ export function UploadFlow() {
     setCaptions([]);
     setSelectedCaption(null);
     setStep("chooseMode");
+    pushUploadHistoryStep("chooseMode");
   }, []);
 
   const selectPostingMode = useCallback((mode: PostingMode) => {
@@ -145,6 +189,7 @@ export function UploadFlow() {
       return mode;
     });
     setStep("configure");
+    pushUploadHistoryStep("configure");
   }, []);
 
   const handleGenerateCaptions = useCallback(async () => {
@@ -196,6 +241,7 @@ export function UploadFlow() {
     const pipeline = toPipeline(postingMode, selectedCaption);
 
     setStep("submitting");
+    pushUploadHistoryStep("submitting");
 
     const formData = new FormData();
     formData.append(
@@ -232,7 +278,7 @@ export function UploadFlow() {
 
     if (result.error) {
       toast.error(result.error);
-      setStep("configure");
+      window.history.back();
       return;
     }
 
@@ -316,8 +362,7 @@ export function UploadFlow() {
         imageSrc={imageSrc}
         onCropComplete={handleCropComplete}
         onCancel={() => {
-          setImageSrc(null);
-          setStep("select");
+          window.history.back();
         }}
       />
     );
@@ -447,7 +492,7 @@ export function UploadFlow() {
       <div className="flex flex-col gap-5">
         <button
           type="button"
-          onClick={() => setStep("chooseMode")}
+          onClick={() => window.history.back()}
           className="flex items-center gap-2 text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-200"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -465,10 +510,7 @@ export function UploadFlow() {
             <button
               type="button"
               onClick={() => {
-                setImageSrc(null);
-                setCroppedBlob(null);
-                setPostingMode(null);
-                setStep("select");
+                window.history.go(-3);
               }}
               className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1.5 text-xs font-medium text-zinc-200 backdrop-blur-sm hover:bg-black/80"
             >

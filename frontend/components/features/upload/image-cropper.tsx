@@ -8,7 +8,6 @@ import ReactCrop, {
   type PixelCrop,
 } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
-import { Crop as CropIcon } from "lucide-react";
 
 // 2:3 Seitenverhältnis (Portrait) – passend zur OpenAI-Ausgabe 1024x1536
 const ASPECT_RATIO = 2 / 3;
@@ -112,13 +111,8 @@ export function ImageCropper({
   }, [completedCrop, onCropComplete]);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2 text-sm text-zinc-400">
-        <CropIcon className="h-4 w-4 text-orange-500" />
-        <span>Bild auf 2:3 zuschneiden – Rahmen verschieben oder skalieren</span>
-      </div>
-
-      <div className="overflow-hidden rounded-xl border border-zinc-800">
+    <div className="flex min-h-0 flex-col gap-3">
+      <div className="min-h-0 overflow-hidden rounded-xl border border-zinc-800">
         <ReactCrop
           crop={crop}
           onChange={(c) => setCrop(c)}
@@ -132,7 +126,7 @@ export function ImageCropper({
             ref={imgRef}
             src={imageSrc}
             alt="Zu schneidendes Foto"
-            className="max-h-[60vh] w-full object-contain"
+            className="mx-auto max-h-[50dvh] w-full max-w-full object-contain sm:max-h-[52dvh]"
             onLoad={onImageLoad}
           />
         </ReactCrop>
