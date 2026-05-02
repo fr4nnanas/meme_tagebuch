@@ -41,7 +41,7 @@ export function AiLimitSection({ currentLimit }: AiLimitSectionProps) {
       <h2 className="text-base font-semibold text-zinc-100">KI-Limit</h2>
 
       {/* Erklärungsbox */}
-      <div className="rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-3 flex gap-3">
+      <div className="rounded-xl bg-zinc-800 border border-zinc-800 px-4 py-3 flex gap-3">
         <Zap className="h-5 w-5 text-orange-400 shrink-0 mt-0.5" />
         <div>
           <p className="text-sm font-medium text-zinc-200">
@@ -59,7 +59,7 @@ export function AiLimitSection({ currentLimit }: AiLimitSectionProps) {
       </div>
 
       {/* Input */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-4 space-y-3">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-800 px-4 py-4 space-y-3">
         <label
           htmlFor="ai-limit-input"
           className="block text-sm font-medium text-zinc-300"

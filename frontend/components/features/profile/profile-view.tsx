@@ -64,7 +64,7 @@ export function ProfileView({ profile, isOwner, currentUserId }: ProfileViewProp
           <button
             type="button"
             onClick={() => setEditOpen(true)}
-            className="flex h-10 flex-1 items-center justify-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 text-sm font-medium text-zinc-200 transition-colors hover:border-orange-500 hover:text-orange-400"
+            className="flex h-10 flex-1 items-center justify-center gap-2 rounded-full border border-zinc-800 bg-zinc-800 text-sm font-medium text-zinc-200 transition-colors hover:border-orange-500 hover:text-orange-400"
           >
             <Pencil className="h-4 w-4" />
             Bearbeiten
@@ -73,7 +73,7 @@ export function ProfileView({ profile, isOwner, currentUserId }: ProfileViewProp
             <button
               type="submit"
               aria-label="Abmelden"
-              className="flex h-10 items-center justify-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-4 text-sm font-medium text-zinc-200 transition-colors hover:border-red-500 hover:text-red-400"
+              className="flex h-10 items-center justify-center gap-2 rounded-full border border-zinc-800 bg-zinc-800 px-4 text-sm font-medium text-zinc-200 transition-colors hover:border-red-500 hover:text-red-400"
             >
               <LogOut className="h-4 w-4" />
               Logout

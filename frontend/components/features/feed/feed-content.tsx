@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import { useActiveProject } from "@/components/features/app/project-context";
 import { fetchPostsAction, type PostWithDetails } from "@/lib/actions/feed";
 import { FeedCard } from "./feed-card";
-import { ProjectExportButton } from "@/components/features/export/project-export-button";
 
 interface FeedContentProps {
   currentUserId: string;
@@ -109,11 +108,6 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
           )}
         </div>
         <div className="flex items-center gap-2">
-          <ProjectExportButton
-            projectId={activeProjectId}
-            projectName={activeProject?.name ?? "Projekt"}
-            compact
-          />
           <button
             type="button"
             onClick={handleRefresh}
@@ -132,7 +126,7 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900"
+              className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-800"
             >
               <div className="flex items-center gap-3 px-4 py-3">
                 <div className="h-9 w-9 animate-pulse rounded-full bg-zinc-800" />
@@ -185,7 +179,7 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
             type="button"
             onClick={handleLoadMore}
             disabled={isLoadingMore || isLoading}
-            className="flex h-11 items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900 px-6 text-sm font-medium text-zinc-300 transition-colors hover:border-orange-500 hover:text-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex h-11 items-center gap-2 rounded-full border border-zinc-800 bg-zinc-800 px-6 text-sm font-medium text-zinc-300 transition-colors hover:border-orange-500 hover:text-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isLoadingMore ? (
               <>

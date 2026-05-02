@@ -182,7 +182,7 @@ export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridPro
           return (
             <div
               key={post.id}
-              className="group relative aspect-[2/3] overflow-hidden rounded-md bg-zinc-900"
+              className="group relative aspect-[2/3] overflow-hidden rounded-md bg-zinc-800"
             >
               {displaySrc ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -205,7 +205,7 @@ export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridPro
               )}
 
               {isPending && (
-                <span className="absolute bottom-1 left-1 rounded bg-zinc-950/70 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">
+                <span className="absolute bottom-1 left-1 rounded bg-zinc-800/70 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">
                   in Arbeit
                 </span>
               )}
@@ -219,7 +219,7 @@ export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridPro
                   }}
                   disabled={isDeleting}
                   aria-label="Post löschen"
-                  className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-zinc-950/70 text-zinc-300 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-600/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800/70 text-zinc-300 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-600/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isDeleting ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -254,7 +254,7 @@ function EmptyState({
   description: string;
 }) {
   return (
-    <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-900 p-6 text-center">
+    <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-800 p-6 text-center">
       <p className="text-sm font-medium text-zinc-300">{title}</p>
       <p className="mt-1 text-xs text-zinc-500">{description}</p>
     </div>

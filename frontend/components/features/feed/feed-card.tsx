@@ -10,7 +10,6 @@ import {
   MoreVertical,
   Sparkles,
   Trash2,
-  User,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +19,7 @@ import {
   updatePostCaptionAction,
   type PostWithDetails,
 } from "@/lib/actions/feed";
+import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
 import { CommentSheet } from "./comment-sheet";
 
 interface FeedCardProps {
@@ -149,28 +149,19 @@ export function FeedCard({
 
   return (
     <>
-      <article className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
+      <article className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-800">
         {/* Header: Avatar + Username + Menu */}
         <div className="flex items-center gap-3 px-4 py-3">
+          <UserAvatarLightbox
+            avatarUrl={post.user.avatar_url}
+            username={post.user.username}
+            sizeClassName="h-9 w-9"
+          />
           <Link
             href={`/profile/${post.user_id}`}
             aria-label={`Profil von ${post.user.username}`}
-            className="flex min-w-0 flex-1 items-center gap-3 rounded-xl py-0.5 pr-1 outline-none ring-orange-500/40 transition-colors hover:bg-zinc-800/60 focus-visible:ring-2"
+            className="flex min-w-0 flex-1 items-center rounded-xl py-0.5 pr-1 outline-none ring-orange-500/40 transition-colors hover:bg-zinc-800/60 focus-visible:ring-2"
           >
-            <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-full bg-zinc-800">
-              {post.user.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={post.user.avatar_url}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-zinc-600">
-                  <User className="h-5 w-5" />
-                </div>
-              )}
-            </div>
             <div className="min-w-0 flex-1 text-left">
               <p className="truncate text-sm font-semibold text-zinc-100">
                 {post.user.username}
@@ -196,7 +187,7 @@ export function FeedCard({
                     className="fixed inset-0 z-10"
                     onClick={() => setShowMenu(false)}
                   />
-                  <div className="absolute right-0 top-10 z-20 min-w-[160px] overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 shadow-2xl">
+                  <div className="absolute right-0 top-10 z-20 min-w-[160px] overflow-hidden rounded-xl border border-zinc-800 bg-zinc-800 shadow-2xl">
                     {isAdmin && !isOwner && (
                       <p className="border-b border-zinc-800 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-orange-400">
                         Admin-Aktion

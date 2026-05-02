@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Urlaubs-Meme-Tagebuch",
-  description: "Mit Freunden Urlaubs-Memes erstellen und teilen.",
+  title: "Meme-Tagebuch",
+  description: "Memes aus Fotos erstellen, mit Freunden im Feed teilen.",
 };
 
 export default function RootLayout({
@@ -28,7 +28,7 @@ export default function RootLayout({
       lang="de"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
     >
-      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100">
+      <body className="min-h-full flex flex-col bg-zinc-900 text-zinc-100">
         {children}
         <Toaster theme="dark" position="top-center" richColors />
       </body>

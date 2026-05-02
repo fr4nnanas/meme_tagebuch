@@ -6,7 +6,6 @@ import { Camera, Home, MapPin, Settings, User, Users } from "lucide-react";
 
 interface BottomNavProps {
   userId: string;
-  isAdmin: boolean;
 }
 
 interface TabDef {
@@ -17,7 +16,7 @@ interface TabDef {
   highlight?: boolean;
 }
 
-export function BottomNav({ userId, isAdmin }: BottomNavProps) {
+export function BottomNav({ userId }: BottomNavProps) {
   const pathname = usePathname();
 
   const tabs: TabDef[] = [
@@ -52,21 +51,18 @@ export function BottomNav({ userId, isAdmin }: BottomNavProps) {
       icon: User,
       isActive: (p) => p.startsWith("/profile"),
     },
-  ];
-
-  if (isAdmin) {
-    tabs.push({
-      href: "/admin",
-      label: "Admin",
+    {
+      href: "/settings",
+      label: "Einstellungen",
       icon: Settings,
-      isActive: (p) => p === "/admin" || p.startsWith("/admin/"),
-    });
-  }
+      isActive: (p) => p === "/settings" || p.startsWith("/settings/"),
+    },
+  ];
 
   return (
     <nav
       aria-label="Hauptnavigation"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-800 bg-zinc-900/95 backdrop-blur"
     >
       <ul className="mx-auto flex max-w-md items-end justify-between gap-1 px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {tabs.map((tab) => {

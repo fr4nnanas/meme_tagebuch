@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { Shield, ShieldOff, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
-import type { UserRow } from "@/app/(app)/admin/page";
+import type { UserRow } from "@/lib/admin/types";
 import { deleteUser, setUserRole } from "@/lib/actions/admin";
 
 interface UsersSectionProps {
@@ -61,7 +61,7 @@ function UserListItem({ user, isSelf }: UserListItemProps) {
   });
 
   return (
-    <li className="flex items-center gap-3 px-4 py-3 rounded-xl border border-zinc-800 bg-zinc-900">
+    <li className="flex items-center gap-3 px-4 py-3 rounded-xl border border-zinc-800 bg-zinc-800">
       {/* Avatar-Platzhalter */}
       <div className="h-9 w-9 rounded-full bg-zinc-800 flex items-center justify-center shrink-0">
         <User className="h-4 w-4 text-zinc-400" />
@@ -167,7 +167,7 @@ export function UsersSection({ users, currentUserId }: UsersSectionProps) {
           ))}
         </ul>
       ) : (
-        <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-900 p-6 text-center">
+        <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-800 p-6 text-center">
           <p className="text-sm text-zinc-400">Keine User gefunden.</p>
         </div>
       )}

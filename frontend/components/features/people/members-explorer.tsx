@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Loader2, Search, User } from "lucide-react";
+import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
+import { Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useActiveProject } from "@/components/features/app/project-context";
 import {
@@ -82,7 +83,7 @@ export function MembersExplorer() {
             placeholder="Benutzername suchen…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-11 w-full rounded-xl border border-zinc-800 bg-zinc-900 pl-10 pr-4 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-orange-500"
+            className="h-11 w-full rounded-xl border border-zinc-800 bg-zinc-800 pl-10 pr-4 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-orange-500"
           />
         </div>
       </div>
@@ -107,22 +108,13 @@ export function MembersExplorer() {
             <li key={m.id}>
               <Link
                 href={`/profile/${m.id}`}
-                className="flex items-center gap-3 rounded-xl px-2 py-3 transition-colors hover:bg-zinc-900"
+                className="flex items-center gap-3 rounded-xl px-2 py-3 transition-colors hover:bg-zinc-800"
               >
-                <div className="h-11 w-11 flex-shrink-0 overflow-hidden rounded-full bg-zinc-800">
-                  {m.avatar_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={m.avatar_url}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-zinc-600">
-                      <User className="h-5 w-5" />
-                    </div>
-                  )}
-                </div>
+                <UserAvatarLightbox
+                  avatarUrl={m.avatar_url}
+                  username={m.username}
+                  sizeClassName="h-11 w-11"
+                />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-zinc-100">
                     {m.username}

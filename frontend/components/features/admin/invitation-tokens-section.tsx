@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import { Check, Copy, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import type { TokenRow } from "@/app/(app)/admin/page";
+import type { TokenRow } from "@/lib/admin/types";
 import {
   deleteInvitationToken,
   generateInvitationToken,
@@ -49,7 +49,7 @@ function TokenRow({ token }: { token: TokenRow }) {
   });
 
   return (
-    <li className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 space-y-2">
+    <li className="rounded-xl border border-zinc-800 bg-zinc-800 px-4 py-3 space-y-2">
       {/* Token-Code */}
       <p className="font-mono text-xs text-zinc-400 break-all leading-relaxed">
         {token.token}
@@ -118,7 +118,7 @@ export function InvitationTokensSection({
       </div>
 
       {/* Hinweis-Box */}
-      <div className="rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-3">
+      <div className="rounded-xl bg-zinc-800 border border-zinc-800 px-4 py-3">
         <p className="text-xs text-zinc-400 leading-relaxed">
           Jeder Link kann mehrfach genutzt werden. Teile ihn nur mit
           vertrauenswürdigen Personen. Über{" "}
@@ -135,7 +135,7 @@ export function InvitationTokensSection({
           ))}
         </ul>
       ) : (
-        <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-900 p-6 text-center">
+        <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-800 p-6 text-center">
           <p className="text-sm text-zinc-400">
             Noch keine Einladungslinks generiert.
           </p>

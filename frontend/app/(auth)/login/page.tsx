@@ -3,7 +3,7 @@ import { LoginForm } from "./login-form";
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-950 px-6 py-12">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-900 px-6 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-zinc-100">Anmelden</h1>

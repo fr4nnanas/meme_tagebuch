@@ -17,7 +17,7 @@ const LeafletMap = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-full items-center justify-center rounded-xl bg-zinc-900">
+      <div className="flex h-full items-center justify-center rounded-xl bg-zinc-800">
         <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
       </div>
     ),
@@ -78,7 +78,7 @@ export function MapContent() {
             <select
               value={selectedUserId}
               onChange={(e) => setSelectedUserId(e.target.value)}
-              className="appearance-none rounded-xl border border-zinc-800 bg-zinc-900 py-2 pl-3 pr-8 text-sm text-zinc-100 focus:border-orange-500 focus:outline-none"
+              className="appearance-none rounded-xl border border-zinc-800 bg-zinc-800 py-2 pl-3 pr-8 text-sm text-zinc-100 focus:border-orange-500 focus:outline-none"
             >
               <option value={ALL_USERS}>Alle User</option>
               {users.map((u) => (
@@ -95,7 +95,7 @@ export function MapContent() {
       {/* Karten-Bereich */}
       <div className="relative flex-1 overflow-hidden rounded-xl pb-4">
         {isLoading ? (
-          <div className="flex h-full items-center justify-center rounded-xl bg-zinc-900">
+          <div className="flex h-full items-center justify-center rounded-xl bg-zinc-800">
             <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
           </div>
         ) : !activeProjectId ? (
@@ -115,7 +115,7 @@ export function MapContent() {
         {/* Badge: Anzahl Pins */}
         {!isLoading && visiblePosts.length > 0 && (
           <div className="absolute bottom-6 left-1/2 z-[1000] -translate-x-1/2">
-            <div className="flex items-center gap-1.5 rounded-full bg-zinc-900/90 px-3 py-1.5 text-xs font-medium text-zinc-300 shadow-lg backdrop-blur-sm">
+            <div className="flex items-center gap-1.5 rounded-full bg-zinc-800/90 px-3 py-1.5 text-xs font-medium text-zinc-300 shadow-lg backdrop-blur-sm">
               <MapPin className="h-3.5 w-3.5 text-orange-500" />
               {visiblePosts.length}{" "}
               {visiblePosts.length === 1 ? "Meme" : "Memes"} auf der Karte
@@ -133,7 +133,7 @@ interface EmptyStateProps {
 
 function EmptyState({ message }: EmptyStateProps) {
   return (
-    <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-zinc-800 bg-zinc-900 text-center">
+    <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-zinc-800 bg-zinc-800 text-center">
       <MapPin className="h-10 w-10 text-zinc-600" />
       <p className="mt-3 max-w-[14rem] text-sm text-zinc-400">{message}</p>
     </div>

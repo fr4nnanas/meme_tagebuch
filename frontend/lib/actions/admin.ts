@@ -5,6 +5,11 @@ import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 
 export type AdminActionResult = { error: string } | { success: true };
 
+function revalidateAdminPages() {
+  revalidatePath("/admin");
+  revalidatePath("/settings");
+}
+
 async function ensureAdmin() {
   const supabase = await createClient();
   const {
@@ -46,7 +51,7 @@ export async function createProject(
 
     if (error) return { error: "Projekt konnte nicht angelegt werden." };
 
-    revalidatePath("/admin");
+    revalidateAdminPages();
     return { success: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unbekannter Fehler." };
@@ -70,7 +75,7 @@ export async function addProjectMember(
       return { error: "Mitglied konnte nicht hinzugefügt werden." };
     }
 
-    revalidatePath("/admin");
+    revalidateAdminPages();
     return { success: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unbekannter Fehler." };
@@ -92,7 +97,7 @@ export async function removeProjectMember(
 
     if (error) return { error: "Mitglied konnte nicht entfernt werden." };
 
-    revalidatePath("/admin");
+    revalidateAdminPages();
     return { success: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unbekannter Fehler." };
@@ -112,7 +117,7 @@ export async function deleteProject(
 
     if (error) return { error: "Projekt konnte nicht gelöscht werden." };
 
-    revalidatePath("/admin");
+    revalidateAdminPages();
     return { success: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unbekannter Fehler." };
@@ -146,7 +151,14 @@ export async function updateProjectBasics(
 
     if (error) return { error: "Projekt konnte nicht gespeichert werden." };
 
-    const navPaths = ["/admin", "/feed", "/upload", "/map", "/people"];
+    const navPaths = [
+      "/admin",
+      "/settings",
+      "/feed",
+      "/upload",
+      "/map",
+      "/people",
+    ];
     for (const p of navPaths) {
       revalidatePath(p);
     }
@@ -210,7 +222,7 @@ export async function updateProjectPromptContext(
 
     if (error) return { error: formatPromptContextSaveError(error) };
 
-    revalidatePath("/admin");
+    revalidateAdminPages();
     return { success: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unbekannter Fehler." };
@@ -229,7 +241,7 @@ export async function generateInvitationToken(): Promise<AdminActionResult> {
 
     if (error) return { error: "Token konnte nicht generiert werden." };
 
-    revalidatePath("/admin");
+    revalidateAdminPages();
     return { success: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unbekannter Fehler." };
@@ -249,7 +261,7 @@ export async function deleteInvitationToken(
 
     if (error) return { error: "Token konnte nicht gelöscht werden." };
 
-    revalidatePath("/admin");
+    revalidateAdminPages();
     return { success: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unbekannter Fehler." };
@@ -277,7 +289,7 @@ export async function setUserRole(
 
     if (error) return { error: "Rolle konnte nicht geändert werden." };
 
-    revalidatePath("/admin");
+    revalidateAdminPages();
     return { success: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unbekannter Fehler." };
@@ -300,7 +312,7 @@ export async function deleteUser(
 
     if (error) return { error: "User konnte nicht gelöscht werden." };
 
-    revalidatePath("/admin");
+    revalidateAdminPages();
     return { success: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unbekannter Fehler." };
@@ -326,7 +338,7 @@ export async function updateAiLimit(
 
     if (error) return { error: "Limit konnte nicht gespeichert werden." };
 
-    revalidatePath("/admin");
+    revalidateAdminPages();
     return { success: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Unbekannter Fehler." };

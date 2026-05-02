@@ -1,14 +1,14 @@
-# Vacation Meme Feed
+# Meme-Feed
 
-Eine private, mobile-first Web-App für Urlaubsgruppen. Fotos werden per KI in Memes verwandelt, in einem gemeinsamen Feed geteilt und auf einer interaktiven Karte visualisiert.
+Eine private, mobile-first Web-App für Gruppen und geteilte Projekte. Fotos werden per KI in Memes verwandelt, in einem gemeinsamen Feed geteilt und auf einer interaktiven Karte visualisiert.
 
 ## Kurzübersicht
 
-- **Private Gruppen** (Projekte): Jeder Urlaub ist ein isolierter Feed
+- **Private Gruppen** (Projekte): Jedes Projekt ist ein isolierter Feed
 - **KI-Meme-Generierung**: Zwei Pipelines (direkt oder assistiert), zwei Meme-Typen
 - **Social Features**: Likes, Kommentare, Nutzerprofile
 - **Interaktive Karte**: Memes auf OpenStreetMap via GPS-Daten aus EXIF
-- **Export**: Ganzer Urlaub als ZIP (Bilder + offline HTML-Galerie)
+- **Export**: Ganzes Projekt als ZIP (Bilder + offline HTML-Galerie)
 
 ## Tech Stack
 

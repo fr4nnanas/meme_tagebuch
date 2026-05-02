@@ -74,7 +74,7 @@ export function buildOfflineGalleryHtml(
   body {
     margin: 0;
     font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-    background: #09090b;
+    background: #18181b;
     color: #f4f4f5;
     line-height: 1.5;
     padding: 24px 16px 48px;
@@ -106,7 +106,7 @@ export function buildOfflineGalleryHtml(
     .grid { grid-template-columns: repeat(3, 1fr); }
   }
   .card {
-    background: #18181b;
+    background: #27272a;
     border: 1px solid #27272a;
     border-radius: 12px;
     overflow: hidden;

@@ -179,7 +179,7 @@ export function JobCompletionHandler() {
         <div
           role="dialog"
           aria-labelledby="canvas-preview-title"
-          className="flex h-[min(92dvh,calc(100dvh-env(safe-area-inset-bottom,0px)))] max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl border border-zinc-800 bg-zinc-900 shadow-xl sm:max-h-[min(88vh,800px)] sm:rounded-2xl"
+          className="flex h-[min(92dvh,calc(100dvh-env(safe-area-inset-bottom,0px)))] max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl border border-zinc-800 bg-zinc-800 shadow-xl sm:max-h-[min(88vh,800px)] sm:rounded-2xl"
         >
           <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
             <h2 id="canvas-preview-title" className="text-lg font-semibold text-zinc-100">

@@ -46,7 +46,7 @@ export function RegisterForm({ token }: RegisterFormProps) {
           autoComplete="username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          className="h-12 rounded-xl border border-zinc-800 bg-zinc-900 px-4 text-zinc-100 placeholder:text-zinc-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+          className="h-12 rounded-xl border border-zinc-800 bg-zinc-800 px-4 text-zinc-100 placeholder:text-zinc-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
           placeholder="dein_benutzername"
         />
       </div>
@@ -67,7 +67,7 @@ export function RegisterForm({ token }: RegisterFormProps) {
           autoComplete="new-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="h-12 rounded-xl border border-zinc-800 bg-zinc-900 px-4 text-zinc-100 placeholder:text-zinc-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+          className="h-12 rounded-xl border border-zinc-800 bg-zinc-800 px-4 text-zinc-100 placeholder:text-zinc-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
           placeholder="Mindestens 6 Zeichen"
         />
       </div>

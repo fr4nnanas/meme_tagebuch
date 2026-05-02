@@ -282,7 +282,7 @@ export function CanvasMemePreview({
           )}
         </div>
 
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3 text-sm">
+        <div className="rounded-xl border border-zinc-800 bg-zinc-800 p-3 text-sm">
           <p className="text-zinc-400">
             <span className="font-medium text-zinc-200">Oben:</span>{" "}
             {overlayTextTop ?? <em className="text-zinc-500">kein Text</em>}
@@ -298,17 +298,17 @@ export function CanvasMemePreview({
           onChange={(e) => setCaption(e.target.value)}
           placeholder="Caption hinzufügen (optional)..."
           rows={2}
-          className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-orange-500"
+          className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-800 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-orange-500"
         />
       </div>
 
-      <div className="mt-4 shrink-0 space-y-2 border-t border-zinc-800 bg-zinc-950/98 pt-4 backdrop-blur-md pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <div className="mt-4 shrink-0 space-y-2 border-t border-zinc-800 bg-zinc-900/98 pt-4 backdrop-blur-md pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => void handleDownload()}
             disabled={!rendered || discardBusy}
-            className="inline-flex min-h-[3rem] flex-1 min-w-[43%] items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 disabled:opacity-50"
+            className="inline-flex min-h-[3rem] flex-1 min-w-[43%] items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 disabled:opacity-50"
           >
             <Download className="h-4 w-4 shrink-0" />
             Download

@@ -76,9 +76,9 @@ function blobToBase64(blob: Blob): Promise<string> {
 }
 
 const MODE_LABEL: Record<PostingMode, string> = {
-  ai_full: "KI-Vollbild",
-  text_overlay: "Text-Overlay",
-  fully_manual: "Komplett manuell",
+  ai_full: "Neues Meme von der KI",
+  text_overlay: "Text auf mein Foto",
+  fully_manual: "Alles selbst",
 };
 
 export function UploadFlow() {
@@ -280,7 +280,7 @@ export function UploadFlow() {
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="flex aspect-[2/3] flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-900 transition-colors hover:border-orange-500 hover:bg-zinc-800/50"
+          className="flex aspect-[2/3] flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-800 transition-colors hover:border-orange-500 hover:bg-zinc-800/50"
         >
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-800">
             <ImagePlus className="h-8 w-8 text-orange-500" />
@@ -334,30 +334,41 @@ export function UploadFlow() {
   if (step === "chooseMode") {
     return (
       <div className="flex flex-col gap-4">
-        <p className="text-sm font-medium text-zinc-300">
-          Wie soll dein Meme entstehen?
+        <p className="text-sm leading-relaxed text-zinc-300">
+          Du hast ein Bild ausgewählt. Jetzt entscheidest du: Soll die App ein
+          neues Bild erzeugen, nur Text darauf legen – oder machst du alles
+          selbst?
         </p>
 
         <button
           type="button"
           onClick={() => selectPostingMode("ai_full")}
           disabled={isAiLimitReached}
-          className={`flex flex-col items-start gap-2 rounded-2xl border-2 p-5 text-left transition-all ${
+          className={`flex flex-col items-start gap-3 rounded-2xl border-2 p-5 text-left transition-all ${
             isAiLimitReached
-              ? "cursor-not-allowed border-zinc-800 bg-zinc-900/50 opacity-60"
-              : "border-zinc-700 bg-zinc-900 hover:border-orange-500/80 hover:bg-zinc-800/80"
+              ? "cursor-not-allowed border-zinc-700/80 bg-zinc-900/50 opacity-60"
+              : "border-emerald-600/55 bg-emerald-950/35 hover:border-emerald-500 hover:bg-emerald-950/55"
           }`}
         >
-          <div className="flex w-full items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-500/15">
-              <Sparkles className="h-6 w-6 text-orange-500" />
+          <div className="flex w-full gap-3">
+            <div
+              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${
+                isAiLimitReached ? "bg-zinc-800" : "bg-emerald-500/20"
+              }`}
+            >
+              <Sparkles
+                className={`h-6 w-6 ${
+                  isAiLimitReached ? "text-zinc-500" : "text-emerald-400"
+                }`}
+              />
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 space-y-2">
               <p className="text-base font-semibold text-zinc-100">
-                KI-Vollbild
+                Neues Meme von der KI
               </p>
-              <p className="text-sm text-zinc-400">
-                Neues Meme-Bild mit gpt-image-2
+              <p className="text-sm leading-relaxed text-zinc-400">
+                Die KI generiert ein komplett neues Meme-Bild passend zu deiner
+                Idee.
               </p>
             </div>
           </div>
@@ -366,11 +377,11 @@ export function UploadFlow() {
               Tageslimit erreicht
             </span>
           ) : remainingAi !== null && dailyLimit !== null ? (
-            <span className="rounded-full bg-zinc-800 px-2.5 py-1 text-xs text-zinc-400">
-              Noch {remainingAi} von {dailyLimit} heute
+            <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-300/90">
+              Heute noch {remainingAi} KI-Bilder frei (von {dailyLimit})
             </span>
           ) : (
-            <span className="rounded-full bg-zinc-800 px-2.5 py-1 text-xs text-zinc-500">
+            <span className="rounded-full bg-emerald-950/60 px-2.5 py-1 text-xs text-emerald-400/80">
               Kontingent wird geladen…
             </span>
           )}
@@ -379,22 +390,23 @@ export function UploadFlow() {
         <button
           type="button"
           onClick={() => selectPostingMode("text_overlay")}
-          className="flex flex-col items-start gap-2 rounded-2xl border-2 border-zinc-700 bg-zinc-900 p-5 text-left transition-all hover:border-orange-500/80 hover:bg-zinc-800/80"
+          className="flex flex-col items-start gap-3 rounded-2xl border-2 border-orange-600/55 bg-orange-950/35 p-5 text-left transition-all hover:border-orange-500 hover:bg-orange-950/55"
         >
-          <div className="flex w-full items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-500/15">
-              <Wand2 className="h-6 w-6 text-orange-500" />
+          <div className="flex w-full gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-500/20">
+              <Wand2 className="h-6 w-6 text-orange-400" />
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 space-y-2">
               <p className="text-base font-semibold text-zinc-100">
-                Text-Overlay
+                Text auf mein Foto
               </p>
-              <p className="text-sm text-zinc-400">
-                KI setzt Text auf dein Foto
+              <p className="text-sm leading-relaxed text-zinc-400">
+                Dein Foto bleibt erhalten. Die KI erstellt Schrift und platziert
+                diese auf dem Bild.
               </p>
             </div>
           </div>
-          <span className="rounded-full bg-green-500/20 px-2.5 py-1 text-xs font-medium text-green-400">
+          <span className="rounded-full bg-orange-500/20 px-2.5 py-1 text-xs font-medium text-orange-300">
             Unlimitiert
           </span>
         </button>
@@ -402,22 +414,23 @@ export function UploadFlow() {
         <button
           type="button"
           onClick={() => selectPostingMode("fully_manual")}
-          className="flex flex-col items-start gap-2 rounded-2xl border-2 border-zinc-700 bg-zinc-900 p-5 text-left transition-all hover:border-orange-500/80 hover:bg-zinc-800/80"
+          className="flex flex-col items-start gap-3 rounded-2xl border-2 border-red-600/55 bg-red-950/35 p-5 text-left transition-all hover:border-red-500 hover:bg-red-950/55"
         >
-          <div className="flex w-full items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-500/15">
-              <PenLine className="h-6 w-6 text-orange-500" />
+          <div className="flex w-full gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-red-500/20">
+              <PenLine className="h-6 w-6 text-red-400" />
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 space-y-2">
               <p className="text-base font-semibold text-zinc-100">
-                Komplett manuell
+                Alles selbst
               </p>
-              <p className="text-sm text-zinc-400">
-                Eigenen Text 1:1 aufs Bild – ohne KI
+              <p className="text-sm leading-relaxed text-zinc-400">
+                Du schreibst den Text selbst und legst ihn auf das Bild – ohne
+                KI.
               </p>
             </div>
           </div>
-          <span className="rounded-full bg-green-500/20 px-2.5 py-1 text-xs font-medium text-green-400">
+          <span className="rounded-full bg-red-500/20 px-2.5 py-1 text-xs font-medium text-red-300">
             Unlimitiert
           </span>
         </button>
@@ -465,13 +478,13 @@ export function UploadFlow() {
         )}
 
         {gps && (
-          <div className="flex items-center gap-2 rounded-xl bg-zinc-900/60 px-3 py-2 text-xs text-zinc-400">
+          <div className="flex items-center gap-2 rounded-xl bg-zinc-800/60 px-3 py-2 text-xs text-zinc-400">
             <span className="text-orange-500">📍</span>
             GPS-Koordinaten erkannt ({gps.lat.toFixed(4)}, {gps.lng.toFixed(4)})
           </div>
         )}
 
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-4 py-3">
+        <div className="rounded-xl border border-zinc-800 bg-zinc-800/80 px-4 py-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
             Gewählt
           </p>
@@ -499,7 +512,7 @@ export function UploadFlow() {
                 placeholder={
                   "Nur unten: einfach hier tippen\n\nOder:\nZeile oben\nZeile(n) unten"
                 }
-                className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-orange-500"
+                className="w-full rounded-xl border border-zinc-800 bg-zinc-800 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-orange-500"
               />
             </>
           ) : (
@@ -515,8 +528,8 @@ export function UploadFlow() {
                 disabled={hintsLocked}
                 readOnly={hintsLocked}
                 onChange={(e) => setUserText(e.target.value)}
-                placeholder="z.B. Strand, zu heiß, Senkung des Meeresspiegels"
-                className={`w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm outline-none placeholder-zinc-500 ${
+                placeholder="z. B. Stichwörter für Stimmung & Kontext oder Insider-Witze"
+                className={`w-full rounded-xl border border-zinc-800 bg-zinc-800 px-4 py-3 text-sm outline-none placeholder-zinc-500 ${
                   hintsLocked
                     ? "cursor-not-allowed opacity-55 text-zinc-500 border-zinc-800/80"
                     : "text-zinc-100 focus:border-orange-500"
@@ -560,8 +573,8 @@ export function UploadFlow() {
                       selectedCaption === idea
                         ? "border-orange-500 bg-orange-500/10 text-zinc-100"
                         : hintsLocked && selectedCaption !== idea
-                          ? "border-zinc-800/70 bg-zinc-950/50 text-zinc-600 opacity-75 hover:border-zinc-600 hover:text-zinc-400"
-                          : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-600"
+                          ? "border-zinc-800/70 bg-zinc-800/50 text-zinc-600 opacity-75 hover:border-zinc-600 hover:text-zinc-400"
+                          : "border-zinc-800 bg-zinc-800 text-zinc-300 hover:border-zinc-600"
                     }`}
                   >
                     {idea}

@@ -224,7 +224,7 @@ Jedes Paket muss vollständig getestet sein, bevor das nächste beginnt.
 
 ### Paket 8 – ZIP-Expor
 
-**Ziel:** Ganzen Urlaub als offline-fähiges ZIP exportieren.
+**Ziel:** Ganzes Projekt als offline-fähiges ZIP exportieren.
 
 **Aufgaben:**
 

@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { Camera, Loader2, User } from "lucide-react";
+import { Camera, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
+import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
 import { updateAvatarUrl } from "@/lib/actions/profile";
 
 interface AvatarUploaderProps {
@@ -82,22 +83,13 @@ export function AvatarUploader({
 
   return (
     <div className="relative inline-flex">
-      <div className="h-24 w-24 overflow-hidden rounded-full border-2 border-zinc-800 bg-zinc-900">
-        {avatarUrl ? (
-          // Plain <img> reicht hier – Avatare sind klein und liegen im public-Bucket;
-          // Next/Image würde domain-Konfiguration für Supabase verlangen.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={avatarUrl}
-            alt={`Avatar von ${username}`}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-zinc-600">
-            <User className="h-10 w-10" />
-          </div>
-        )}
-      </div>
+      <UserAvatarLightbox
+        avatarUrl={avatarUrl}
+        username={username}
+        sizeClassName="h-24 w-24"
+        className="border-2 border-zinc-800"
+        placeholderIconClassName="h-10 w-10"
+      />
 
       {isOwner && (
         <>
@@ -106,7 +98,7 @@ export function AvatarUploader({
             onClick={() => inputRef.current?.click()}
             disabled={busy}
             aria-label="Avatar ändern"
-            className="absolute bottom-0 right-0 flex h-9 w-9 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg shadow-orange-500/30 ring-2 ring-zinc-950 transition-colors hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="absolute bottom-0 right-0 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg shadow-orange-500/30 ring-2 ring-zinc-900 transition-colors hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {busy ? (
               <Loader2 className="h-4 w-4 animate-spin" />

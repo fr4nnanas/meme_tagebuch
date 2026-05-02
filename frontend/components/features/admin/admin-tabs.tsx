@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { FolderOpen, Link2, Users, Zap } from "lucide-react";
-import type { ProjectWithMembers, UserRow, TokenRow } from "@/app/(app)/admin/page";
+import type { ProjectWithMembers, UserRow, TokenRow } from "@/lib/admin/types";
 import { ProjectsSection } from "./projects-section";
 import { InvitationTokensSection } from "./invitation-tokens-section";
 import { UsersSection } from "./users-section";
@@ -60,7 +60,7 @@ export function AdminTabs({
               className={`flex-1 flex flex-col items-center gap-1 py-3 text-xs font-medium transition-colors ${
                 isActive
                   ? "bg-orange-500 text-white"
-                  : "bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                  : "bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700"
               }`}
             >
               <Icon className="h-4 w-4" />

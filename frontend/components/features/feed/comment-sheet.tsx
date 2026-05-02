@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Heart, Loader2, Send, Trash2, User, X } from "lucide-react";
+import { Heart, Loader2, Send, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   addCommentAction,
@@ -10,6 +10,7 @@ import {
   toggleCommentLikeAction,
   type CommentWithDetails,
 } from "@/lib/actions/feed";
+import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
 
 interface CommentSheetProps {
   postId: string;
@@ -156,7 +157,7 @@ export function CommentSheet({
       />
 
       {/* Sheet */}
-      <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[82vh] flex-col rounded-t-2xl border-t border-zinc-800 bg-zinc-950">
+      <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[82vh] flex-col rounded-t-2xl border-t border-zinc-800 bg-zinc-900">
         {/* Handle + Header */}
         <div className="flex items-center justify-between px-4 py-3">
           <div className="mx-auto mb-1 h-1 w-10 rounded-full bg-zinc-700" />
@@ -253,21 +254,12 @@ function CommentItem({ comment, isOwner, onDelete, onToggleLike }: CommentItemPr
 
   return (
     <li className="flex items-start gap-3">
-      {/* Avatar */}
-      <div className="h-8 w-8 flex-shrink-0 overflow-hidden rounded-full bg-zinc-800">
-        {comment.user.avatar_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={comment.user.avatar_url}
-            alt={comment.user.username}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-zinc-600">
-            <User className="h-4 w-4" />
-          </div>
-        )}
-      </div>
+      <UserAvatarLightbox
+        avatarUrl={comment.user.avatar_url}
+        username={comment.user.username}
+        sizeClassName="h-8 w-8"
+        placeholderIconClassName="h-4 w-4"
+      />
 
       {/* Content */}
       <div className="min-w-0 flex-1">

@@ -61,7 +61,7 @@ function EditProfileModalContent({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
+      <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-800 p-6 shadow-2xl">
         <div className="flex items-center justify-between">
           <h2
             id="edit-profile-title"
@@ -96,7 +96,7 @@ function EditProfileModalContent({
               maxLength={30}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="h-12 rounded-xl border border-zinc-800 bg-zinc-950 px-4 text-zinc-100 placeholder:text-zinc-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+              className="h-12 rounded-xl border border-zinc-800 bg-zinc-800 px-4 text-zinc-100 placeholder:text-zinc-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
             />
           </div>
 
@@ -112,7 +112,7 @@ function EditProfileModalContent({
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               placeholder="Erzähle etwas über dich …"
-              className="resize-none rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-zinc-100 placeholder:text-zinc-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+              className="resize-none rounded-xl border border-zinc-800 bg-zinc-800 px-4 py-3 text-zinc-100 placeholder:text-zinc-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
             />
             <span className="text-right text-xs text-zinc-500">
               {bio.length}/280
@@ -123,7 +123,7 @@ function EditProfileModalContent({
             <button
               type="button"
               onClick={onClose}
-              className="h-12 flex-1 rounded-full border border-zinc-800 bg-zinc-900 font-medium text-zinc-300 transition-colors hover:border-zinc-700 hover:text-zinc-100"
+              className="h-12 flex-1 rounded-full border border-zinc-800 bg-zinc-800 font-medium text-zinc-300 transition-colors hover:border-zinc-700 hover:text-zinc-100"
             >
               Abbrechen
             </button>

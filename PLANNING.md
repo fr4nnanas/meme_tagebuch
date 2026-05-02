@@ -90,7 +90,7 @@ Da KI-Aufrufe 10–30 Sekunden dauern können:
 | Bucket | Zugang | Inhalt |
 |---|---|---|
 | `avatars` | Öffentlich | Profilbilder |
-| `originals` | Privat (nur Projektmitglieder) | Original-Urlaubsfotos (3:4) |
+| `originals` | Privat (nur Projektmitglieder) | Originalfotos (3:4) |
 | `memes` | Privat (nur Projektmitglieder) | Fertige Memes (Typ A + Typ B) |
 
 Pfadstruktur: `/{project_id}/{user_id}/{post_id}.jpg`

@@ -23,14 +23,6 @@ export default async function AppLayout({
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
-    .from("users")
-    .select("id, role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  const isAdmin = profile?.role === "admin";
-
   // Projekte des Users laden – zuerst Mitgliedschaften, dann Projekt-Stammdaten.
   // Zwei einfache Queries sind hier robuster als ein Embedded-Select.
   const { data: memberships } = await supabase
@@ -58,11 +50,11 @@ export default async function AppLayout({
     <ProjectProvider initialProjects={initialProjects}>
       <JobProvider>
         <GlobalProgressBar />
-        <div className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
+        <div className="flex min-h-screen flex-col bg-zinc-900 text-zinc-100">
           <main className="mx-auto w-full max-w-md flex-1 pb-24">
             {children}
           </main>
-          <BottomNav userId={user.id} isAdmin={isAdmin} />
+          <BottomNav userId={user.id} />
         </div>
         <JobCompletionHandler />
       </JobProvider>

@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp, Plus, Save, Trash2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
-import type { ProjectWithMembers, UserRow } from "@/app/(app)/admin/page";
+import type { ProjectWithMembers, UserRow } from "@/lib/admin/types";
 import {
   addProjectMember,
   createProject,
@@ -13,7 +13,6 @@ import {
   updateProjectBasics,
   updateProjectPromptContext,
 } from "@/lib/actions/admin";
-import { ProjectExportButton } from "@/components/features/export/project-export-button";
 
 interface ProjectsSectionProps {
   projects: ProjectWithMembers[];
@@ -116,7 +115,7 @@ function ProjectCard({ project, users, expanded, onToggleExpand }: ProjectCardPr
   }
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+    <div className="rounded-xl border border-zinc-800 bg-zinc-800 overflow-hidden">
       {/* Header */}
       <div className="flex items-center">
         <button
@@ -245,12 +244,6 @@ function ProjectCard({ project, users, expanded, onToggleExpand }: ProjectCardPr
             </div>
           )}
 
-          {/* ZIP-Export */}
-          <div className="pt-2 border-t border-zinc-800 space-y-2">
-            <p className="text-xs font-medium text-zinc-400">Offline-Export</p>
-            <ProjectExportButton projectId={project.id} projectName={project.name} />
-          </div>
-
           {/* KI-Kontext / Masterprompt */}
           <div className="pt-2 border-t border-zinc-800 space-y-2">
             <p className="text-xs font-medium text-zinc-400">KI-Kontext (Masterprompt)</p>
@@ -323,7 +316,7 @@ export function ProjectsSection({ projects, users }: ProjectsSectionProps) {
       {showForm && (
         <form
           action={handleCreateProject}
-          className="rounded-xl border border-orange-500/30 bg-zinc-900 p-4 space-y-3"
+          className="rounded-xl border border-orange-500/30 bg-zinc-800 p-4 space-y-3"
         >
           <p className="text-sm font-medium text-zinc-100">Neues Projekt</p>
           <input
@@ -374,7 +367,7 @@ export function ProjectsSection({ projects, users }: ProjectsSectionProps) {
           ))}
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-900 p-6 text-center">
+        <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-800 p-6 text-center">
           <p className="text-sm text-zinc-400">Noch keine Projekte angelegt.</p>
         </div>
       )}

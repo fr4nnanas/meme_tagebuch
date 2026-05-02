@@ -148,7 +148,7 @@ export function VariantPickerModal({
       <div
         role="dialog"
         aria-labelledby="variant-picker-title"
-        className="flex h-[min(92dvh,calc(100dvh-env(safe-area-inset-bottom,0px)))] max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl border border-zinc-800 bg-zinc-900 shadow-xl sm:max-h-[min(88vh,800px)] sm:rounded-2xl"
+        className="flex h-[min(92dvh,calc(100dvh-env(safe-area-inset-bottom,0px)))] max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl border border-zinc-800 bg-zinc-800 shadow-xl sm:max-h-[min(88vh,800px)] sm:rounded-2xl"
       >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
           <h2
@@ -249,11 +249,11 @@ export function VariantPickerModal({
             onChange={(e) => setCaption(e.target.value)}
             placeholder="Caption hinzufügen (optional)..."
             rows={2}
-            className="mb-2 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-orange-500"
+            className="mb-2 w-full resize-none rounded-xl border border-zinc-800 bg-zinc-800 px-4 py-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-orange-500"
           />
         </div>
 
-        <div className="shrink-0 space-y-2 border-t border-zinc-800 bg-zinc-950/98 px-4 pt-3 backdrop-blur-md pb-[max(0.875rem,env(safe-area-inset-bottom))]">
+        <div className="shrink-0 space-y-2 border-t border-zinc-800 bg-zinc-900/98 px-4 pt-3 backdrop-blur-md pb-[max(0.875rem,env(safe-area-inset-bottom))]">
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -269,7 +269,7 @@ export function VariantPickerModal({
                   ? "Zuerst eine Variante auswählen"
                   : "Gewähltes Bild laden"
               }
-              className="inline-flex min-h-[3rem] flex-1 min-w-[43%] items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex min-h-[3rem] flex-1 min-w-[43%] items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Download className="h-4 w-4 shrink-0" />
               Laden
@@ -279,7 +279,7 @@ export function VariantPickerModal({
                 type="button"
                 onClick={() => void handleDownloadOther()}
                 disabled={isPosting || secondVariantBusy || discardBusy}
-                className="inline-flex min-h-[3rem] flex-1 min-w-[43%] items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-500 disabled:opacity-40"
+                className="inline-flex min-h-[3rem] flex-1 min-w-[43%] items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-500 disabled:opacity-40"
               >
                 <Download className="h-4 w-4 shrink-0 opacity-70" />
                 Andere laden

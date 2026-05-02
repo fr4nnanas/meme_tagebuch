@@ -8,7 +8,6 @@ import {
   Loader2,
   MessageCircle,
   Sparkles,
-  User,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -19,6 +18,7 @@ import {
   type PostWithDetails,
 } from "@/lib/actions/feed";
 import { CommentSheet } from "@/components/features/feed/comment-sheet";
+import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
 
 interface ProfilePostDetailSheetProps {
   postId: string | null;
@@ -191,36 +191,30 @@ export function ProfilePostDetailSheet({
       />
 
       <div className="fixed inset-0 z-[35] flex flex-col overflow-hidden">
-        <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-2 border-b border-zinc-800 bg-zinc-950/95 px-2 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-2 border-b border-zinc-800 bg-zinc-900/95 px-2 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <span className="w-10 shrink-0" aria-hidden />
           <div className="flex min-w-0 justify-center px-2 text-center">
             {post ? (
-              <Link
-                href={`/profile/${post.user_id}`}
-                className="inline-flex max-w-full items-center justify-center gap-2 rounded-xl py-1 outline-none ring-orange-500/40 focus-visible:ring-2"
-                onClick={onClose}
-              >
-                <div className="h-8 w-8 flex-shrink-0 overflow-hidden rounded-full bg-zinc-800">
-                  {post.user.avatar_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={post.user.avatar_url}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-zinc-600">
-                      <User className="h-4 w-4" />
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0 text-left">
-                  <p className="truncate text-sm font-semibold text-zinc-100">
-                    {post.user.username}
-                  </p>
-                  <p className="text-xs text-zinc-500">{createdAt}</p>
-                </div>
-              </Link>
+              <div className="inline-flex max-w-full items-center justify-center gap-2 rounded-xl py-1">
+                <UserAvatarLightbox
+                  avatarUrl={post.user.avatar_url}
+                  username={post.user.username}
+                  sizeClassName="h-8 w-8"
+                  placeholderIconClassName="h-4 w-4"
+                />
+                <Link
+                  href={`/profile/${post.user_id}`}
+                  className="min-w-0 outline-none ring-orange-500/40 focus-visible:ring-2"
+                  onClick={onClose}
+                >
+                  <div className="text-left">
+                    <p className="truncate text-sm font-semibold text-zinc-100">
+                      {post.user.username}
+                    </p>
+                    <p className="text-xs text-zinc-500">{createdAt}</p>
+                  </div>
+                </Link>
+              </div>
             ) : (
               <span className="text-sm font-medium text-zinc-400">Post</span>
             )}
@@ -236,7 +230,7 @@ export function ProfilePostDetailSheet({
         </div>
 
         <div
-          className="flex-1 overflow-y-auto overscroll-contain bg-zinc-950 pb-[env(safe-area-inset-bottom,12px)]"
+          className="flex-1 overflow-y-auto overscroll-contain bg-zinc-900 pb-[env(safe-area-inset-bottom,12px)]"
           onClick={(e) => e.stopPropagation()}
         >
           {loadError && (
@@ -245,7 +239,7 @@ export function ProfilePostDetailSheet({
 
           {!loadError && (
             <>
-              <div className="mx-auto aspect-[2/3] w-full max-w-md bg-zinc-900">
+              <div className="mx-auto aspect-[2/3] w-full max-w-md bg-zinc-800">
                 {imgSrc ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -268,7 +262,7 @@ export function ProfilePostDetailSheet({
                       onClick={handleLike}
                       disabled={isLiking}
                       aria-label={optimisticLike.liked ? "Like entfernen" : "Liken"}
-                      className="flex h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed"
+                      className="flex h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed"
                     >
                       <Heart
                         className={`h-6 w-6 transition-colors ${
@@ -290,7 +284,7 @@ export function ProfilePostDetailSheet({
                       type="button"
                       onClick={() => setShowComments(true)}
                       aria-label="Kommentare anzeigen"
-                      className="flex h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-zinc-100"
+                      className="flex h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
                     >
                       <MessageCircle className="h-6 w-6" />
                       <span>{commentCount}</span>
@@ -306,7 +300,7 @@ export function ProfilePostDetailSheet({
                           maxLength={500}
                           rows={4}
                           placeholder="Caption schreiben…"
-                          className="w-full resize-none rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-orange-500"
+                          className="w-full resize-none rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-orange-500"
                         />
                         <div className="flex gap-2">
                           <button
