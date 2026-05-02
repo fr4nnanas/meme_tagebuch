@@ -13,6 +13,7 @@ interface AdminTabsProps {
   users: UserRow[];
   tokens: TokenRow[];
   aiLimit: number;
+  defaultMemberProjectId: string | null;
   currentUserId: string;
   /** Postgres-/Ladehinweise (nicht kritisch wenn null) */
   diagnostics?: string | null;
@@ -32,6 +33,7 @@ export function AdminTabs({
   users,
   tokens,
   aiLimit,
+  defaultMemberProjectId,
   currentUserId,
   diagnostics = null,
 }: AdminTabsProps) {
@@ -72,7 +74,11 @@ export function AdminTabs({
 
       {/* Aktiver Tab-Inhalt */}
       {activeTab === "projects" && (
-        <ProjectsSection projects={projects} users={users} />
+        <ProjectsSection
+          projects={projects}
+          users={users}
+          defaultMemberProjectId={defaultMemberProjectId}
+        />
       )}
       {activeTab === "tokens" && (
         <InvitationTokensSection tokens={tokens} />

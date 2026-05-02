@@ -112,6 +112,7 @@ export function SettingsShell({
           users={adminData.users}
           tokens={adminData.tokens}
           aiLimit={adminData.aiLimit}
+          defaultMemberProjectId={adminData.defaultMemberProjectId}
           currentUserId={currentUserId}
           diagnostics={adminData.diagnostics}
         />

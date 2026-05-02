@@ -2,7 +2,15 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, Plus, Save, Trash2, UserPlus } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Home,
+  Plus,
+  Save,
+  Trash2,
+  UserPlus,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { ProjectWithMembers, UserRow } from "@/lib/admin/types";
 import {
@@ -10,6 +18,7 @@ import {
   createProject,
   deleteProject,
   removeProjectMember,
+  updateDefaultMemberProject,
   updateProjectBasics,
   updateProjectPromptContext,
 } from "@/lib/actions/admin";
@@ -17,6 +26,93 @@ import {
 interface ProjectsSectionProps {
   projects: ProjectWithMembers[];
   users: UserRow[];
+  defaultMemberProjectId: string | null;
+}
+
+function LobbyProjectCard({
+  projects,
+  savedProjectId,
+}: {
+  projects: ProjectWithMembers[];
+  savedProjectId: string | null;
+}) {
+  const router = useRouter();
+  const [selectedId, setSelectedId] = useState(savedProjectId ?? "");
+  const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    setSelectedId(savedProjectId ?? "");
+  }, [savedProjectId]);
+
+  function handleSave() {
+    const next = selectedId.trim();
+    startTransition(async () => {
+      const result = await updateDefaultMemberProject(next.length > 0 ? next : null);
+      if ("error" in result) {
+        toast.error(result.error);
+      } else {
+        toast.success(
+          next.length > 0
+            ? "Neue Nutzer werden diesem Projekt automatisch zugewiesen."
+            : "Automatischer Projektbeitritt ist deaktiviert.",
+        );
+        router.refresh();
+      }
+    });
+  }
+
+  const hasChanged = selectedId !== (savedProjectId ?? "");
+  const sorted = [...projects].sort((a, b) =>
+    a.name.localeCompare(b.name, "de"),
+  );
+
+  return (
+    <div className="rounded-xl border border-orange-500/25 bg-zinc-800/80 px-4 py-4 space-y-3">
+      <div className="flex gap-3">
+        <Home className="h-5 w-5 text-orange-400 shrink-0 mt-0.5" />
+        <div className="min-w-0 space-y-1">
+          <p className="text-sm font-medium text-zinc-100">
+            Standard-Projekt für neue Nutzer
+          </p>
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            Wähle ein bestehendes Projekt als „Lobby“: Jede neue Registrierung
+            wird dort automatisch als Mitglied eingetragen (ohne manuelle
+            Zuweisung).
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <select
+          value={selectedId}
+          onChange={(e) => setSelectedId(e.target.value)}
+          disabled={isPending}
+          aria-label="Lobby-Projekt"
+          className="flex-1 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50"
+        >
+          <option value="">— Kein automatischer Beitritt —</option>
+          {sorted.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={!hasChanged || isPending}
+          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-medium hover:bg-orange-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+        >
+          <Save className="h-4 w-4" />
+          {isPending ? "Speichern…" : "Speichern"}
+        </button>
+      </div>
+      {projects.length === 0 ? (
+        <p className="text-xs text-zinc-500">
+          Lege zuerst ein Projekt an, dann kannst du es hier auswählen.
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 interface ProjectCardProps {
@@ -275,7 +371,11 @@ function ProjectCard({ project, users, expanded, onToggleExpand }: ProjectCardPr
   );
 }
 
-export function ProjectsSection({ projects, users }: ProjectsSectionProps) {
+export function ProjectsSection({
+  projects,
+  users,
+  defaultMemberProjectId,
+}: ProjectsSectionProps) {
   const [showForm, setShowForm] = useState(false);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -298,6 +398,11 @@ export function ProjectsSection({ projects, users }: ProjectsSectionProps) {
 
   return (
     <div className="space-y-4">
+      <LobbyProjectCard
+        projects={projects}
+        savedProjectId={defaultMemberProjectId}
+      />
+
       {/* Header mit Button */}
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-zinc-100">

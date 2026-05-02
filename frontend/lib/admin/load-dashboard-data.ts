@@ -76,6 +76,8 @@ export type AdminDashboardData = {
   users: UserRow[];
   tokens: TokenRow[];
   aiLimit: number;
+  /** Gespeicherte Projekt-UUID oder leer → kein Auto-Beitritt */
+  defaultMemberProjectId: string | null;
   diagnostics: string | null;
 };
 
@@ -86,7 +88,7 @@ export async function loadAdminDashboardData(
     process.env.SUPABASE_SERVICE_ROLE_KEY?.trim(),
   );
 
-  const [projectsPkg, membersPkg, rawUsersPkg, tokensPkg, aiLimitPkg] =
+  const [projectsPkg, membersPkg, rawUsersPkg, tokensPkg, settingsPkg] =
     await Promise.all([
       withServiceRoleFallback(
         fetchProjectsBulk(supabase),
@@ -111,9 +113,8 @@ export async function loadAdminDashboardData(
 
       supabase
         .from("settings")
-        .select("value")
-        .eq("key", "daily_ai_image_limit")
-        .maybeSingle(),
+        .select("key, value")
+        .in("key", ["daily_ai_image_limit", "default_member_project_id"]),
     ]);
 
   const projectRows = projectsPkg.data ?? [];
@@ -147,13 +148,17 @@ export async function loadAdminDashboardData(
 
   const rawUsers = rawUsersPkg.data;
   const tokens = tokensPkg.data;
-  const aiLimitSetting = aiLimitPkg.data;
+  const settingsRows = settingsPkg.data ?? [];
+  const settingsMap = new Map(settingsRows.map((r) => [r.key, r.value]));
+  const aiLimitSetting = settingsMap.get("daily_ai_image_limit");
+  const lobbyRaw = settingsMap.get("default_member_project_id")?.trim() ?? "";
 
   return {
     projects,
     users: (rawUsers ?? []) as UserRow[],
     tokens: (tokens ?? []) as TokenRow[],
-    aiLimit: parseInt(aiLimitSetting?.value ?? "5", 10),
+    aiLimit: parseInt(aiLimitSetting ?? "5", 10),
+    defaultMemberProjectId: lobbyRaw.length > 0 ? lobbyRaw : null,
     diagnostics,
   };
 }

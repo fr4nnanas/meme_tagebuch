@@ -321,6 +321,49 @@ export async function deleteUser(
 
 // ----- KI-LIMIT -----
 
+const DEFAULT_MEMBER_PROJECT_KEY = "default_member_project_id";
+
+export async function updateDefaultMemberProject(
+  projectId: string | null,
+): Promise<AdminActionResult> {
+  try {
+    const { supabase } = await ensureAdmin();
+
+    let value = "";
+    if (projectId?.trim()) {
+      const id = projectId.trim();
+      const { data: proj, error: projErr } = await supabase
+        .from("projects")
+        .select("id")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (projErr || !proj) {
+        return { error: "Projekt existiert nicht oder ist nicht sichtbar." };
+      }
+      value = id;
+    }
+
+    const { error } = await supabase.from("settings").upsert(
+      {
+        key: DEFAULT_MEMBER_PROJECT_KEY,
+        value,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "key" },
+    );
+
+    if (error) {
+      return { error: "Lobby-Projekt konnte nicht gespeichert werden." };
+    }
+
+    revalidateAdminPages();
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unbekannter Fehler." };
+  }
+}
+
 export async function updateAiLimit(
   limit: number,
 ): Promise<AdminActionResult> {
