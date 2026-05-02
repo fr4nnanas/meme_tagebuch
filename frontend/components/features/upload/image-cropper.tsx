@@ -9,21 +9,26 @@ import ReactCrop, {
 } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
 
-// 2:3 Seitenverhältnis (Portrait) – passend zur OpenAI-Ausgabe 1024x1536
-const ASPECT_RATIO = 2 / 3;
-// Ausgabegröße des gecropten Bildes
-const OUTPUT_WIDTH = 1024;
-const OUTPUT_HEIGHT = 1536;
+// Standard: 2:3 (Portrait) – Meme-Upload / OpenAI 1024×1536
+const DEFAULT_ASPECT_RATIO = 2 / 3;
+const DEFAULT_OUTPUT_WIDTH = 1024;
+const DEFAULT_OUTPUT_HEIGHT = 1536;
 
 interface ImageCropperProps {
   imageSrc: string;
   onCropComplete: (blob: Blob) => void;
   onCancel: () => void;
+  /** z. B. `1` für quadratischen Avatar */
+  aspectRatio?: number;
+  outputWidth?: number;
+  outputHeight?: number;
 }
 
 async function getCroppedBlob(
   image: HTMLImageElement,
   pixelCrop: PixelCrop,
+  outputWidth: number,
+  outputHeight: number,
 ): Promise<Blob> {
   // react-image-crop: PixelCrop bezieht sich auf die angezeigte Größe (clientWidth/Height).
   // drawImage erwartet Koordinaten in natürlichen Bildpixeln — sonst nur ein kleiner
@@ -42,8 +47,8 @@ async function getCroppedBlob(
   const sHeight = pixelCrop.height * scaleY;
 
   const canvas = document.createElement("canvas");
-  canvas.width = OUTPUT_WIDTH;
-  canvas.height = OUTPUT_HEIGHT;
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
 
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas context nicht verfügbar");
@@ -56,8 +61,8 @@ async function getCroppedBlob(
     sHeight,
     0,
     0,
-    OUTPUT_WIDTH,
-    OUTPUT_HEIGHT,
+    outputWidth,
+    outputHeight,
   );
 
   return new Promise((resolve, reject) => {
@@ -76,6 +81,9 @@ export function ImageCropper({
   imageSrc,
   onCropComplete,
   onCancel,
+  aspectRatio = DEFAULT_ASPECT_RATIO,
+  outputWidth = DEFAULT_OUTPUT_WIDTH,
+  outputHeight = DEFAULT_OUTPUT_HEIGHT,
 }: ImageCropperProps) {
   const imgRef = useRef<HTMLImageElement>(null);
   const [crop, setCrop] = useState<Crop>();
@@ -85,15 +93,19 @@ export function ImageCropper({
   const onImageLoad = useCallback(
     (e: React.SyntheticEvent<HTMLImageElement>) => {
       const { width, height } = e.currentTarget;
-      // Zentrierter, erzwungener 2:3-Crop
       const centered = centerCrop(
-        makeAspectCrop({ unit: "%", width: 90 }, ASPECT_RATIO, width, height),
+        makeAspectCrop(
+          { unit: "%", width: 90 },
+          aspectRatio,
+          width,
+          height,
+        ),
         width,
         height,
       );
       setCrop(centered);
     },
-    [],
+    [aspectRatio],
   );
 
   const handleConfirm = useCallback(async () => {
@@ -101,14 +113,19 @@ export function ImageCropper({
     setIsProcessing(true);
 
     try {
-      const blob = await getCroppedBlob(imgRef.current, completedCrop);
+      const blob = await getCroppedBlob(
+        imgRef.current,
+        completedCrop,
+        outputWidth,
+        outputHeight,
+      );
       onCropComplete(blob);
     } catch (err) {
       console.error("Crop fehlgeschlagen:", err);
     } finally {
       setIsProcessing(false);
     }
-  }, [completedCrop, onCropComplete]);
+  }, [completedCrop, onCropComplete, outputWidth, outputHeight]);
 
   return (
     <div className="flex min-h-0 flex-col gap-3">
@@ -117,7 +134,7 @@ export function ImageCropper({
           crop={crop}
           onChange={(c) => setCrop(c)}
           onComplete={(c) => setCompletedCrop(c)}
-          aspect={ASPECT_RATIO}
+          aspect={aspectRatio}
           minWidth={60}
           keepSelection
         >

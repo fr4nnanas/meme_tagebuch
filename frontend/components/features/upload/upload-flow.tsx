@@ -318,14 +318,21 @@ export function UploadFlow() {
           accept="image/*"
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0];
+            const input = e.target;
+            input.removeAttribute("capture");
+            const file = input.files?.[0];
             if (file) void handleFileSelect(file);
           }}
         />
 
         <button
           type="button"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => {
+            const input = fileInputRef.current;
+            if (!input) return;
+            input.removeAttribute("capture");
+            input.click();
+          }}
           className="flex aspect-[2/3] flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-800 transition-colors hover:border-orange-500 hover:bg-zinc-800/50"
         >
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-800">
