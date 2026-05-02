@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useOptimistic, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import {
   Check,
   Heart,
@@ -17,14 +17,34 @@ import {
   updatePostCaptionAction,
   type PostWithDetails,
 } from "@/lib/actions/feed";
-import { CommentSheet } from "@/components/features/feed/comment-sheet";
+import { useJobContext } from "@/components/features/app/job-context";
+import { CommentThread } from "@/components/features/feed/comment-thread";
 import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
+import { getJobStatusForPostAction } from "@/lib/actions/meme-job";
+import type { JobStatusResponse } from "@/lib/meme/job-status-types";
+
+function shouldOpenMemeCompletionUI(d: JobStatusResponse): boolean {
+  if (d.status !== "completed" || d.errorMsg) return false;
+  if (d.memeType === "ai_generated" && d.variantSignedUrls && d.variantSignedUrls.length > 0) {
+    return true;
+  }
+  if (
+    d.memeType === "canvas_overlay" &&
+    d.originalSignedUrl &&
+    (d.overlayTextTop || d.overlayTextBottom)
+  ) {
+    return true;
+  }
+  return false;
+}
 
 interface ProfilePostDetailSheetProps {
   postId: string | null;
   /** Thumbnail-/Lightbox-URL für sofortiges Bild während Laden */
   fallbackImageSrc: string | null;
   currentUserId: string;
+  /** True, wenn das Profil-Raster dem eingeloggten Nutzer gehört – dann sind alle geöffneten Posts seine Posts (Caption bearbeiten). */
+  isProfileOwner: boolean;
   onClose: () => void;
 }
 
@@ -32,8 +52,14 @@ export function ProfilePostDetailSheet({
   postId,
   fallbackImageSrc,
   currentUserId,
+  isProfileOwner,
   onClose,
 }: ProfilePostDetailSheetProps) {
+  const { markJobCompleted } = useJobContext();
+  const recoveryFiredRef = useRef<string | null>(null);
+  const [memeWorkBanner, setMemeWorkBanner] = useState(false);
+  const [memeJobError, setMemeJobError] = useState<string | null>(null);
+
   const [post, setPost] = useState<PostWithDetails | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
@@ -47,7 +73,6 @@ export function ProfilePostDetailSheet({
     (_s, next: typeof likeState) => next,
   );
 
-  const [showComments, setShowComments] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
   const [showCaptionEdit, setShowCaptionEdit] = useState(false);
   const [captionDraft, setCaptionDraft] = useState("");
@@ -67,7 +92,6 @@ export function ProfilePostDetailSheet({
     let cancelled = false;
     setIsLoadingDetail(true);
     setLoadError(null);
-    setShowComments(false);
     setShowCaptionEdit(false);
 
     fetchPostDetailAction(postId)
@@ -95,6 +119,12 @@ export function ProfilePostDetailSheet({
   }, [postId]);
 
   useEffect(() => {
+    recoveryFiredRef.current = null;
+    setMemeWorkBanner(false);
+    setMemeJobError(null);
+  }, [postId]);
+
+  useEffect(() => {
     const original = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
@@ -105,6 +135,86 @@ export function ProfilePostDetailSheet({
   function handleBackdropClose() {
     onClose();
   }
+
+  useEffect(() => {
+    if (
+      !post ||
+      post.meme_image_url ||
+      !isProfileOwner ||
+      String(post.user_id) !== String(currentUserId)
+    ) {
+      setMemeWorkBanner(false);
+      setMemeJobError(null);
+      return;
+    }
+
+    setMemeWorkBanner(true);
+    const p = post;
+    let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | undefined;
+
+    async function tick() {
+      const res = await getJobStatusForPostAction(p.id);
+      if (cancelled) return;
+
+      if (!res.ok) {
+        setMemeJobError(res.error);
+        setMemeWorkBanner(false);
+        return;
+      }
+
+      if ("noJob" in res && res.noJob) {
+        setMemeWorkBanner(true);
+        setMemeJobError(null);
+        return;
+      }
+
+      if (!("data" in res)) return;
+      const d = res.data;
+
+      if (d.status === "failed") {
+        setMemeJobError(d.errorMsg ?? "Meme-Erstellung fehlgeschlagen");
+        setMemeWorkBanner(false);
+        if (interval) clearInterval(interval);
+        return;
+      }
+
+      if (shouldOpenMemeCompletionUI(d)) {
+        if (recoveryFiredRef.current !== p.id) {
+          recoveryFiredRef.current = p.id;
+          markJobCompleted(d);
+        }
+        setMemeWorkBanner(false);
+        setMemeJobError(null);
+        if (interval) clearInterval(interval);
+        return;
+      }
+
+      if (d.status === "completed" && d.errorMsg) {
+        setMemeJobError(d.errorMsg);
+        setMemeWorkBanner(false);
+        if (interval) clearInterval(interval);
+        return;
+      }
+
+      if (d.status === "pending" || d.status === "processing") {
+        setMemeWorkBanner(true);
+        setMemeJobError(null);
+        return;
+      }
+
+      setMemeWorkBanner(true);
+      setMemeJobError(null);
+    }
+
+    void tick();
+    interval = setInterval(() => void tick(), 3000);
+
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
+  }, [post, isProfileOwner, currentUserId, markJobCompleted]);
 
   function handleLike() {
     if (!post || isLiking) return;
@@ -171,7 +281,11 @@ export function ProfilePostDetailSheet({
 
   if (!postId) return null;
 
-  const isPostOwner = post?.user_id === currentUserId;
+  /** Eigenes Profil-Raster + Post gehört dem eingeloggten Nutzer (Server prüft beim Speichern erneut). */
+  const canEditCaption =
+    isProfileOwner &&
+    post !== null &&
+    String(post.user_id) === String(currentUserId);
   const imgSrc = post?.signed_url ?? fallbackImageSrc;
   const createdAt = post
     ? new Intl.DateTimeFormat("de-DE", {
@@ -254,6 +368,27 @@ export function ProfilePostDetailSheet({
                 )}
               </div>
 
+              {!isLoadingDetail &&
+                post &&
+                !post.meme_image_url &&
+                (() => {
+                  const line =
+                    memeJobError ??
+                    (!isProfileOwner || memeWorkBanner
+                      ? "Meme-Erstellung noch in Arbeit"
+                      : null);
+                  if (!line) return null;
+                  return (
+                    <div className="border-b border-zinc-800 px-4 py-3">
+                      <p
+                        className={`text-center text-sm ${memeJobError ? "text-red-400" : "text-zinc-400"}`}
+                      >
+                        {line}
+                      </p>
+                    </div>
+                  );
+                })()}
+
               {!isLoadingDetail && post && (
                 <>
                   <div className="flex items-center gap-1 border-b border-zinc-800 px-4 py-2">
@@ -282,8 +417,12 @@ export function ProfilePostDetailSheet({
 
                     <button
                       type="button"
-                      onClick={() => setShowComments(true)}
-                      aria-label="Kommentare anzeigen"
+                      onClick={() =>
+                        document
+                          .getElementById(`comments-${post.id}`)
+                          ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                      }
+                      aria-label="Zu den Kommentaren scrollen"
                       className="flex h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
                     >
                       <MessageCircle className="h-6 w-6" />
@@ -339,19 +478,21 @@ export function ProfilePostDetailSheet({
                             {currentCaption}
                           </p>
                         ) : (
-                          isPostOwner && (
+                          canEditCaption && (
                             <p className="text-xs italic text-zinc-500">Noch keine Caption.</p>
                           )
                         )}
 
-                        {isPostOwner && !showCaptionEdit && (
+                        {canEditCaption && !showCaptionEdit && (
                           <div className="flex flex-wrap gap-2 pt-1">
                             <button
                               type="button"
                               onClick={() => setShowCaptionEdit(true)}
                               className="rounded-full border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-orange-500 hover:text-orange-400"
                             >
-                              Caption bearbeiten
+                              {currentCaption
+                                ? "Caption bearbeiten"
+                                : "Caption hinzufügen"}
                             </button>
                             <button
                               type="button"
@@ -373,22 +514,21 @@ export function ProfilePostDetailSheet({
                       </div>
                     )}
                   </div>
+
+                  <div className="px-4 pb-6">
+                    <CommentThread
+                      postId={post.id}
+                      currentUserId={currentUserId}
+                      onCommentAdded={() => setCommentCount((c) => c + 1)}
+                      onCommentDeleted={() => setCommentCount((c) => Math.max(0, c - 1))}
+                    />
+                  </div>
                 </>
               )}
             </>
           )}
         </div>
       </div>
-
-      {showComments && post && (
-        <CommentSheet
-          postId={post.id}
-          currentUserId={currentUserId}
-          onClose={() => setShowComments(false)}
-          onCommentAdded={() => setCommentCount((c) => c + 1)}
-          onCommentDeleted={() => setCommentCount((c) => Math.max(0, c - 1))}
-        />
-      )}
     </>
   );
 }

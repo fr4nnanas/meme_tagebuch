@@ -20,7 +20,7 @@ import {
   type PostWithDetails,
 } from "@/lib/actions/feed";
 import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
-import { CommentSheet } from "./comment-sheet";
+import { CommentThread } from "./comment-thread";
 
 interface FeedCardProps {
   post: PostWithDetails;
@@ -57,7 +57,6 @@ export function FeedCard({
   );
 
   const [showMenu, setShowMenu] = useState(false);
-  const [showComments, setShowComments] = useState(false);
   const [showCaptionEdit, setShowCaptionEdit] = useState(false);
   const [captionDraft, setCaptionDraft] = useState(post.caption ?? "");
   const [currentCaption, setCurrentCaption] = useState(post.caption);
@@ -257,8 +256,13 @@ export function FeedCard({
 
           <button
             type="button"
-            onClick={() => setShowComments(true)}
-            aria-label="Kommentare anzeigen"
+            onClick={() =>
+              document.getElementById(`comments-${post.id}`)?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              })
+            }
+            aria-label="Zu den Kommentaren scrollen"
             className="flex h-10 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
           >
             <MessageCircle className="h-5 w-5" />
@@ -339,20 +343,15 @@ export function FeedCard({
           )}
         </div>
 
-        {/* Bottom padding */}
-        <div className="h-3" />
+        <div className="px-4 pb-3">
+          <CommentThread
+            postId={post.id}
+            currentUserId={currentUserId}
+            onCommentAdded={() => onCommentCountChange(post.id, 1)}
+            onCommentDeleted={() => onCommentCountChange(post.id, -1)}
+          />
+        </div>
       </article>
-
-      {/* Comment Sheet */}
-      {showComments && (
-        <CommentSheet
-          postId={post.id}
-          currentUserId={currentUserId}
-          onClose={() => setShowComments(false)}
-          onCommentAdded={() => onCommentCountChange(post.id, 1)}
-          onCommentDeleted={() => onCommentCountChange(post.id, -1)}
-        />
-      )}
     </>
   );
 }

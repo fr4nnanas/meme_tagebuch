@@ -194,8 +194,8 @@ export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridPro
                     setDetailPostId(post.id);
                     setDetailFallbackSrc(displaySrc);
                   }}
-                  className={`h-full w-full object-cover transition-opacity ${
-                    isPending ? "opacity-50" : "cursor-pointer active:opacity-75"
+                  className={`h-full w-full cursor-pointer object-cover transition-opacity active:opacity-75 ${
+                    isPending ? "opacity-50" : ""
                   }`}
                 />
               ) : (
@@ -237,6 +237,7 @@ export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridPro
         postId={detailPostId}
         fallbackImageSrc={detailFallbackSrc}
         currentUserId={currentUserId}
+        isProfileOwner={isOwner}
         onClose={() => {
           setDetailPostId(null);
           setDetailFallbackSrc(null);
