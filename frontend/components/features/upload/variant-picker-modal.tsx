@@ -46,50 +46,38 @@ export function VariantPickerModal({
   );
   const [caption, setCaption] = useState("");
   const [secondVariantBusy, setSecondVariantBusy] = useState(false);
+  const [downloadBusy, setDownloadBusy] = useState(false);
 
   const twoVariants = variantUrls.length >= 2;
 
-  const handleDownloadSelected = useCallback(async () => {
-    const idx = twoVariants ? selected : 0;
-    if (idx === null || idx === undefined) return;
-    const url = variantUrls[idx];
-    if (!url) return;
-
+  const handleDownload = useCallback(async () => {
+    if (variantUrls.length === 0) return;
+    setDownloadBusy(true);
     try {
-      const res = await fetch(url);
-      const blob = await res.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download =
-        variantUrls.length >= 2
-          ? `meme_variante_${idx + 1}.jpg`
-          : `meme.jpg`;
-      a.click();
-      URL.revokeObjectURL(objectUrl);
+      for (let i = 0; i < variantUrls.length; i++) {
+        const url = variantUrls[i];
+        if (!url) continue;
+        const res = await fetch(url);
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = objectUrl;
+        a.download =
+          variantUrls.length >= 2
+            ? `meme_variante_${i + 1}.jpg`
+            : `meme.jpg`;
+        a.click();
+        URL.revokeObjectURL(objectUrl);
+        if (i < variantUrls.length - 1) {
+          await new Promise((r) => setTimeout(r, 250));
+        }
+      }
     } catch {
       toast.error("Download fehlgeschlagen");
+    } finally {
+      setDownloadBusy(false);
     }
-  }, [selected, twoVariants, variantUrls]);
-
-  const handleDownloadOther = useCallback(async () => {
-    if (!twoVariants || selected === null) return;
-    const otherIndex = selected === 0 ? 1 : 0;
-    const url = variantUrls[otherIndex];
-
-    try {
-      const res = await fetch(url);
-      const blob = await res.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = `meme_variante_${otherIndex + 1}.jpg`;
-      a.click();
-      URL.revokeObjectURL(objectUrl);
-    } catch {
-      toast.error("Download fehlgeschlagen");
-    }
-  }, [selected, twoVariants, variantUrls]);
+  }, [variantUrls]);
 
   const handleRequestSecondVariant = useCallback(async () => {
     setSecondVariantBusy(true);
@@ -139,10 +127,6 @@ export function VariantPickerModal({
   const canPost =
     variantUrls.length === 1 ? true : selected !== null;
 
-  const canDownloadChosen =
-    variantUrls.length === 1 ||
-    (twoVariants && selected !== null);
-
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center sm:p-4">
       <div
@@ -163,7 +147,7 @@ export function VariantPickerModal({
               void onDiscard();
             }}
             aria-label="Entwurf verwerfen"
-            disabled={discardBusy || isPosting || secondVariantBusy}
+            disabled={discardBusy || isPosting || secondVariantBusy || downloadBusy}
             className="rounded-full p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 disabled:pointer-events-none disabled:opacity-40"
           >
             <X className="h-5 w-5" aria-hidden />
@@ -227,7 +211,7 @@ export function VariantPickerModal({
             <button
               type="button"
               onClick={() => void handleRequestSecondVariant()}
-              disabled={secondVariantBusy || isPosting || discardBusy}
+              disabled={secondVariantBusy || isPosting || discardBusy || downloadBusy}
               className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-600 bg-zinc-800/50 py-3 text-sm font-medium text-zinc-200 transition-colors hover:border-orange-500/50 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {secondVariantBusy ? (
@@ -257,39 +241,32 @@ export function VariantPickerModal({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => void handleDownloadSelected()}
+              onClick={() => void handleDownload()}
               disabled={
-                !canDownloadChosen ||
+                downloadBusy ||
                 isPosting ||
                 secondVariantBusy ||
                 discardBusy
               }
               title={
-                twoVariants && selected === null
-                  ? "Zuerst eine Variante auswählen"
-                  : "Gewähltes Bild laden"
+                twoVariants
+                  ? "Beide Varianten als Dateien laden"
+                  : "Bild laden"
               }
               className="inline-flex min-h-[3rem] flex-1 min-w-[43%] items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <Download className="h-4 w-4 shrink-0" />
-              Laden
+              {downloadBusy ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 shrink-0" />
+              )}
+              {downloadBusy ? "Wird geladen…" : "Laden"}
             </button>
-            {twoVariants && selected !== null ? (
-              <button
-                type="button"
-                onClick={() => void handleDownloadOther()}
-                disabled={isPosting || secondVariantBusy || discardBusy}
-                className="inline-flex min-h-[3rem] flex-1 min-w-[43%] items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-500 disabled:opacity-40"
-              >
-                <Download className="h-4 w-4 shrink-0 opacity-70" />
-                Andere laden
-              </button>
-            ) : null}
             <button
               type="button"
               onClick={handleConfirm}
               disabled={
-                !canPost || isPosting || secondVariantBusy || discardBusy
+                !canPost || isPosting || secondVariantBusy || discardBusy || downloadBusy
               }
               className="inline-flex min-h-[3rem] flex-[1_1_100%] items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-[2] sm:min-w-0 sm:flex-nowrap"
             >
@@ -304,7 +281,7 @@ export function VariantPickerModal({
               void onDiscard();
             }}
             disabled={
-              isPosting || secondVariantBusy || discardBusy
+              isPosting || secondVariantBusy || discardBusy || downloadBusy
             }
             className="flex w-full min-h-11 items-center justify-center gap-2 rounded-xl border border-red-950/70 bg-red-950/25 py-3 text-sm font-medium text-red-300/95 transition-colors hover:border-red-500/50 hover:bg-red-950/45 disabled:cursor-not-allowed disabled:opacity-50"
           >
