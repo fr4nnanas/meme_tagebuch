@@ -32,10 +32,19 @@ export function UserAvatarLightbox({
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") window.history.back();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPopState() {
+      setOpen(false);
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
   }, [open]);
 
   const stopLinkNavigation = useCallback((e: MouseEvent) => {
@@ -64,7 +73,7 @@ export function UserAvatarLightbox({
         role="dialog"
         aria-modal="true"
         aria-label={`Profilbild ${username}`}
-        onClick={() => setOpen(false)}
+        onClick={() => window.history.back()}
       >
         <button
           type="button"
@@ -72,7 +81,7 @@ export function UserAvatarLightbox({
           className="absolute right-3 top-[max(2rem,calc(env(safe-area-inset-top,0px)+1.25rem))] z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/20 bg-zinc-800/95 text-white shadow-lg shadow-black/40 ring-2 ring-orange-500/35 backdrop-blur-sm transition-colors hover:border-orange-400/50 hover:bg-orange-600 hover:ring-orange-400/60 active:scale-[0.97]"
           onClick={(e) => {
             e.stopPropagation();
-            setOpen(false);
+            window.history.back();
           }}
         >
           <X className="h-7 w-7" strokeWidth={2.25} aria-hidden />
@@ -94,6 +103,11 @@ export function UserAvatarLightbox({
         type="button"
         onClick={(e) => {
           stopLinkNavigation(e);
+          window.history.pushState(
+            { userAvatarLightbox: true },
+            "",
+            window.location.href,
+          );
           setOpen(true);
         }}
         aria-label={`Profilbild von ${username} vergrößern`}

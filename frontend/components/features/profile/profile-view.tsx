@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { LogOut, Pencil } from "lucide-react";
+import { Suspense, useState } from "react";
+import { Loader2, LogOut, Pencil } from "lucide-react";
 import { logout } from "@/lib/actions/auth";
 import { AvatarUploader } from "./avatar-uploader";
 import { EditProfileModal } from "./edit-profile-modal";
@@ -90,11 +90,19 @@ export function ProfileView({ profile, isOwner, currentUserId }: ProfileViewProp
       </div>
 
       <div className="mt-6">
-        <PostGrid
-          userId={profile.id}
-          currentUserId={currentUserId}
-          isOwner={isOwner}
-        />
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center py-10 text-zinc-400">
+              <Loader2 className="h-5 w-5 animate-spin" />
+            </div>
+          }
+        >
+          <PostGrid
+            userId={profile.id}
+            currentUserId={currentUserId}
+            isOwner={isOwner}
+          />
+        </Suspense>
       </div>
 
       <EditProfileModal

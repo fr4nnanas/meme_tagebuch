@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ImageIcon, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -30,12 +37,38 @@ interface FetchResult {
 }
 
 export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { activeProjectId, activeProject, projects } = useActiveProject();
   const [result, setResult] = useState<FetchResult | null>(null);
-  const [detailPostId, setDetailPostId] = useState<string | null>(null);
-  const [detailFallbackSrc, setDetailFallbackSrc] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [, startDeleteTransition] = useTransition();
+
+  const detailPostId = searchParams.get("post");
+
+  const detailFallbackSrc = useMemo(() => {
+    if (!detailPostId || !result?.posts.length) return null;
+    const thumb = result.posts.find((p) => p.id === detailPostId);
+    return thumb ? (thumb.signed_url ?? thumb.original_signed_url) : null;
+  }, [detailPostId, result?.posts]);
+
+  const closePostDetail = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (!params.has("post")) return;
+    params.delete("post");
+    const q = params.toString();
+    router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+  }, [router, pathname, searchParams]);
+
+  const openPostDetail = useCallback(
+    (postId: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("post", postId);
+      router.push(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [router, pathname, searchParams],
+  );
 
   const loadPosts = useCallback(
     async (projectId: string) => {
@@ -109,6 +142,12 @@ export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridPro
     setResult(null);
     void loadPosts(activeProjectId);
   }, [activeProjectId, loadPosts]);
+
+  useEffect(() => {
+    if (!detailPostId || !result?.posts.length) return;
+    const exists = result.posts.some((p) => p.id === detailPostId);
+    if (!exists) closePostDetail();
+  }, [detailPostId, result?.posts, closePostDetail]);
 
   function handleDelete(postId: string) {
     if (!window.confirm("Diesen Post wirklich löschen?")) return;
@@ -190,10 +229,7 @@ export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridPro
                   src={displaySrc}
                   alt="Post"
                   loading="lazy"
-                  onClick={() => {
-                    setDetailPostId(post.id);
-                    setDetailFallbackSrc(displaySrc);
-                  }}
+                  onClick={() => openPostDetail(post.id)}
                   className={`h-full w-full cursor-pointer object-cover transition-opacity active:opacity-75 ${
                     isPending ? "opacity-50" : ""
                   }`}
@@ -238,10 +274,7 @@ export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridPro
         fallbackImageSrc={detailFallbackSrc}
         currentUserId={currentUserId}
         isProfileOwner={isOwner}
-        onClose={() => {
-          setDetailPostId(null);
-          setDetailFallbackSrc(null);
-        }}
+        onClose={closePostDetail}
       />
     </>
   );
