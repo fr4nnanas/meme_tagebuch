@@ -160,6 +160,20 @@ function wrapMemeLines(
   return lines.slice(0, maxLines);
 }
 
+/**
+ * Am ersten Komma trennen: bei mehreren Kommas bleibt der obere Teil so kurz
+ * wie möglich, der Rest (inkl. weiterer Kommas) steht unten.
+ */
+function splitAtFirstComma(text: string): { top: string; bottom: string } | null {
+  const t = text.trim();
+  const i = t.indexOf(",");
+  if (i === -1) return null;
+  const top = t.slice(0, i + 1).trim();
+  const bottom = t.slice(i + 1).trim();
+  if (!top || !bottom) return null;
+  return { top, bottom };
+}
+
 function drawMemeLine(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -226,7 +240,11 @@ export function CanvasMemePreview({
       const topTrim = overlayTextTop?.trim() ?? "";
       const bottomTrim = (overlayTextBottom || "").trim();
 
-      /** Nur ein Bereich befüllt (typisch: eine Zeile ohne \n → alles „unten“): gesamte Fläche nutzen. */
+      /**
+       * Nur ein Bereich befüllt (typisch: eine Zeile ohne \n → alles „unten“):
+       * Mit Komma: am ersten Komma in Oben/Unten splitten, sonst unten zuerst füllen,
+       * oben nur bei Überlauf.
+       */
       const useCombinedVertical =
         (!topTrim && bottomTrim) || (topTrim && !bottomTrim);
 
@@ -235,14 +253,36 @@ export function CanvasMemePreview({
 
       if (useCombinedVertical) {
         const block = topTrim || bottomTrim;
-        const all = wrapMemeLines(
-          ctx,
-          block,
-          maxTextWidth,
-          MAX_COMBINED_LINES,
-        );
-        topLines = all.slice(0, MAX_LINES_TOP);
-        bottomLines = all.slice(MAX_LINES_TOP, MAX_COMBINED_LINES);
+        const comma = splitAtFirstComma(block);
+        if (comma) {
+          topLines = wrapMemeLines(
+            ctx,
+            comma.top,
+            maxTextWidth,
+            MAX_LINES_TOP,
+          );
+          bottomLines = wrapMemeLines(
+            ctx,
+            comma.bottom,
+            maxTextWidth,
+            MAX_LINES_BOTTOM,
+          );
+        } else {
+          const all = wrapMemeLines(
+            ctx,
+            block,
+            maxTextWidth,
+            MAX_COMBINED_LINES,
+          );
+          if (all.length <= MAX_LINES_BOTTOM) {
+            topLines = [];
+            bottomLines = all;
+          } else {
+            bottomLines = all.slice(-MAX_LINES_BOTTOM);
+            const overflowCount = all.length - bottomLines.length;
+            topLines = all.slice(0, Math.min(overflowCount, MAX_LINES_TOP));
+          }
+        }
       } else {
         topLines = topTrim
           ? wrapMemeLines(ctx, topTrim, maxTextWidth, MAX_LINES_TOP)
