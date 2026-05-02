@@ -125,12 +125,13 @@ export function ProfilePostDetailSheet({
   }, [postId]);
 
   useEffect(() => {
+    if (!postId) return;
     const original = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = original;
     };
-  }, []);
+  }, [postId]);
 
   function handleBackdropClose() {
     onClose();
@@ -337,9 +338,9 @@ export function ProfilePostDetailSheet({
             type="button"
             onClick={onClose}
             aria-label="Schließen"
-            className="flex h-10 w-10 items-center justify-center justify-self-end rounded-full text-zinc-300 hover:bg-zinc-800"
+            className="flex h-12 w-12 items-center justify-center justify-self-end self-end rounded-full border border-zinc-600/80 bg-zinc-800 text-zinc-100 shadow-md ring-1 ring-white/10 transition-colors hover:border-orange-500/50 hover:bg-zinc-700 hover:text-white active:scale-[0.97] sm:mb-0.5"
           >
-            <X className="h-5 w-5" />
+            <X className="h-7 w-7" strokeWidth={2.25} aria-hidden />
           </button>
         </div>
 

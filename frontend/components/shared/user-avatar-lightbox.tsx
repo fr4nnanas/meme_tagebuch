@@ -69,13 +69,13 @@ export function UserAvatarLightbox({
         <button
           type="button"
           aria-label="Schließen"
-          className="absolute right-4 top-4 rounded-full bg-zinc-800 p-2 text-zinc-200 transition-colors hover:bg-zinc-700"
+          className="absolute right-3 top-[max(2rem,calc(env(safe-area-inset-top,0px)+1.25rem))] z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/20 bg-zinc-800/95 text-white shadow-lg shadow-black/40 ring-2 ring-orange-500/35 backdrop-blur-sm transition-colors hover:border-orange-400/50 hover:bg-orange-600 hover:ring-orange-400/60 active:scale-[0.97]"
           onClick={(e) => {
             e.stopPropagation();
             setOpen(false);
           }}
         >
-          <X className="h-5 w-5" />
+          <X className="h-7 w-7" strokeWidth={2.25} aria-hidden />
         </button>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
