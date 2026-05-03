@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
@@ -13,9 +13,27 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  themeColor: "#18181b",
+  colorScheme: "dark",
+};
+
 export const metadata: Metadata = {
   title: "Meme-Tagebuch",
   description: "Memes aus Fotos erstellen, mit Freunden im Feed teilen.",
+  applicationName: "Meme-Tagebuch",
+  appleWebApp: {
+    capable: true,
+    title: "Meme-Tagebuch",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/icon-192.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export default function RootLayout({

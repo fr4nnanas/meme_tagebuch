@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { Inbox, Loader2, RefreshCw } from "lucide-react";
+import { Inbox, LayoutGrid, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useActiveProject } from "@/components/features/app/project-context";
 import {
@@ -10,6 +10,7 @@ import {
   fetchUnseenCountAction,
   type PostWithDetails,
 } from "@/lib/actions/feed";
+import { useLoadMoreOnIntersect } from "@/hooks/use-load-more-on-intersect";
 import { FeedCard } from "./feed-card";
 
 interface FeedContentProps {
@@ -65,12 +66,19 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
     void loadPosts(activeProjectId, 0, false);
   }, [activeProjectId, loadPosts]);
 
-  function handleLoadMore() {
+  const handleLoadMore = useCallback(() => {
     if (!activeProjectId) return;
     startLoadMoreTransition(() => {
       void loadPosts(activeProjectId, page + 1, true);
     });
-  }
+  }, [activeProjectId, page, loadPosts]);
+
+  const loadMoreSentinelRef = useLoadMoreOnIntersect(
+    Boolean(activeProjectId && hasMore && posts.length > 0),
+    hasMore,
+    isLoading || isLoadingMore,
+    handleLoadMore,
+  );
 
   function handlePostDeleted(postId: string) {
     setPosts((prev) => prev.filter((p) => p.id !== postId));
@@ -125,18 +133,29 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
           )}
         </div>
         <div className="flex items-center gap-2">
-          {unseenCount > 0 && (
-            <Link
-              href="/feed/verpasst"
-              className="relative flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-orange-400"
-              aria-label={`Verpasste Memes: ${unseenCount} ungesehen`}
-            >
-              <Inbox className="h-5 w-5" />
+          <Link
+            href="/feed/verpasst"
+            className="relative flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-orange-400"
+            aria-label={
+              unseenCount > 0
+                ? `Verpasste Memes: ${unseenCount} ungesehen`
+                : "Verpasste Memes öffnen"
+            }
+          >
+            <Inbox className="h-5 w-5" />
+            {unseenCount > 0 && (
               <span className="absolute -right-0.5 -top-0.5 flex min-w-[1.1rem] items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-bold text-white">
                 {unseenCount > 99 ? "99+" : unseenCount}
               </span>
-            </Link>
-          )}
+            )}
+          </Link>
+          <Link
+            href="/feed/raster"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-orange-400"
+            aria-label="Projekt als Raster anzeigen"
+          >
+            <LayoutGrid className="h-5 w-5" />
+          </Link>
           <button
             type="button"
             onClick={handleRefresh}
@@ -148,20 +167,6 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
           </button>
         </div>
       </header>
-
-      {unseenCount > 0 && (
-        <Link
-          href="/feed/verpasst"
-          className="mx-4 mt-3 flex items-center justify-between gap-3 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-left text-sm text-orange-200 transition-colors hover:bg-orange-500/15"
-        >
-          <span>
-            <strong className="font-semibold text-orange-100">{unseenCount}</strong>{" "}
-            {unseenCount === 1 ? "Meme hast" : "Memes hast"} du noch nicht gesehen —{" "}
-            <span className="text-orange-300 underline underline-offset-2">Entdeckung öffnen</span>
-          </span>
-          <Inbox className="h-5 w-5 shrink-0 text-orange-400" aria-hidden />
-        </Link>
-      )}
 
       {/* Loading skeleton */}
       {isLoading && posts.length === 0 && (
@@ -216,24 +221,23 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
         </div>
       )}
 
-      {/* Load more */}
-      {hasMore && (
-        <div className="mt-6 flex justify-center px-4">
-          <button
-            type="button"
-            onClick={handleLoadMore}
-            disabled={isLoadingMore || isLoading}
-            className="flex h-11 items-center gap-2 rounded-full border border-zinc-800 bg-zinc-800 px-6 text-sm font-medium text-zinc-300 transition-colors hover:border-orange-500 hover:text-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isLoadingMore ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Lädt…
-              </>
-            ) : (
-              "Mehr laden"
-            )}
-          </button>
+      {/* Infinite scroll: Sentinel + Ladehinweis */}
+      {hasMore && posts.length > 0 && (
+        <div className="mt-6 flex flex-col items-center px-4 pb-2">
+          <div
+            ref={loadMoreSentinelRef}
+            className="h-2 w-full shrink-0"
+            aria-hidden
+          />
+          {(isLoadingMore || isLoading) && (
+            <div
+              className="flex h-11 items-center gap-2 text-sm text-zinc-400"
+              aria-live="polite"
+            >
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              Lädt…
+            </div>
+          )}
         </div>
       )}
     </div>

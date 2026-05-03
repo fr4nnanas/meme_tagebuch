@@ -1,9 +1,11 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
   ProjectProvider,
   type ProjectInfo,
 } from "@/components/features/app/project-context";
+import { ProjectDeepLinkSync } from "@/components/features/app/project-deeplink-sync";
 import { BottomNav } from "@/components/features/app/bottom-nav";
 import { JobProvider } from "@/components/features/app/job-context";
 import { GlobalProgressBar } from "@/components/features/app/job-progress-bar";
@@ -48,6 +50,9 @@ export default async function AppLayout({
 
   return (
     <ProjectProvider initialProjects={initialProjects}>
+      <Suspense fallback={null}>
+        <ProjectDeepLinkSync />
+      </Suspense>
       <JobProvider>
         <GlobalProgressBar />
         <div className="flex min-h-screen flex-col bg-zinc-900 text-zinc-100">

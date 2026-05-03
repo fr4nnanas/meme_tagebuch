@@ -2,10 +2,15 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { ChevronLeft, Loader2, RefreshCw } from "lucide-react";
+import { CheckCheck, ChevronLeft, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useActiveProject } from "@/components/features/app/project-context";
-import { fetchUnseenPostsAction, type PostWithDetails } from "@/lib/actions/feed";
+import {
+  fetchUnseenPostsAction,
+  markAllProjectPostsViewedAction,
+  type PostWithDetails,
+} from "@/lib/actions/feed";
+import { useLoadMoreOnIntersect } from "@/hooks/use-load-more-on-intersect";
 import { FeedCard } from "./feed-card";
 
 interface UnseenFeedContentProps {
@@ -23,6 +28,7 @@ export function UnseenFeedContent({
   const [hasMore, setHasMore] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, startLoadMoreTransition] = useTransition();
+  const [isMarkingAll, startMarkAllTransition] = useTransition();
   const loadedProjectRef = useRef<string | null>(null);
 
   const loadPosts = useCallback(
@@ -54,12 +60,19 @@ export function UnseenFeedContent({
     void loadPosts(activeProjectId, 0, false);
   }, [activeProjectId, loadPosts]);
 
-  function handleLoadMore() {
+  const handleLoadMore = useCallback(() => {
     if (!activeProjectId) return;
     startLoadMoreTransition(() => {
       void loadPosts(activeProjectId, page + 1, true);
     });
-  }
+  }, [activeProjectId, page, loadPosts]);
+
+  const loadMoreSentinelRef = useLoadMoreOnIntersect(
+    Boolean(activeProjectId && hasMore && posts.length > 0),
+    hasMore,
+    isLoading || isLoadingMore,
+    handleLoadMore,
+  );
 
   function handlePostDeleted(postId: string) {
     setPosts((prev) => prev.filter((p) => p.id !== postId));
@@ -79,10 +92,6 @@ export function UnseenFeedContent({
     );
   }
 
-  const handleMarkedViewed = useCallback((postId: string) => {
-    setPosts((prev) => prev.filter((p) => p.id !== postId));
-  }, []);
-
   function handleRefresh() {
     if (!activeProjectId) return;
     loadedProjectRef.current = null;
@@ -90,6 +99,30 @@ export function UnseenFeedContent({
     setPage(0);
     setHasMore(false);
     void loadPosts(activeProjectId, 0, false);
+  }
+
+  function handleMarkAllSeen() {
+    if (!activeProjectId) return;
+    startMarkAllTransition(async () => {
+      const result = await markAllProjectPostsViewedAction(activeProjectId);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      setPosts([]);
+      setPage(0);
+      setHasMore(false);
+      loadedProjectRef.current = null;
+      if (result.marked === 0) {
+        toast.message("Es gab keine weiteren ungesehenen Memes.");
+      } else {
+        toast.success(
+          result.marked === 1
+            ? "1 Meme als gesehen markiert."
+            : `${result.marked} Memes als gesehen markiert.`,
+        );
+      }
+    });
   }
 
   if (!activeProjectId) {
@@ -134,9 +167,25 @@ export function UnseenFeedContent({
       </header>
 
       <p className="mt-3 px-4 text-sm text-zinc-500">
-        Memes, die du im Feed noch nicht lange genug gesehen hast, erscheinen hier. Sobald du
-        sie im Feed oder hier ansiehst, gelten sie als gelesen.
+        Memes, die du im Feed noch nicht gesehen hast, erscheinen hier. Sobald du sie im Feed oder
+        hier ansiehst, gelten sie als gelesen.
       </p>
+
+      <div className="mt-4 px-4">
+        <button
+          type="button"
+          onClick={handleMarkAllSeen}
+          disabled={isLoading || isMarkingAll}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800/80 py-3 text-sm font-medium text-zinc-200 transition-colors hover:border-orange-500/50 hover:bg-zinc-800 hover:text-orange-200 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isMarkingAll ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            <CheckCheck className="h-4 w-4" aria-hidden />
+          )}
+          Alles als gesehen markieren
+        </button>
+      </div>
 
       {isLoading && posts.length === 0 && (
         <div className="mt-6 flex flex-col gap-6 px-4">
@@ -177,29 +226,27 @@ export function UnseenFeedContent({
               onDeleted={handlePostDeleted}
               onCaptionUpdated={handleCaptionUpdated}
               onCommentCountChange={handleCommentCountChange}
-              onMarkedViewed={handleMarkedViewed}
             />
           ))}
         </div>
       )}
 
-      {hasMore && (
-        <div className="mt-6 flex justify-center px-4">
-          <button
-            type="button"
-            onClick={handleLoadMore}
-            disabled={isLoadingMore || isLoading}
-            className="flex h-11 items-center gap-2 rounded-full border border-zinc-800 bg-zinc-800 px-6 text-sm font-medium text-zinc-300 transition-colors hover:border-orange-500 hover:text-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isLoadingMore ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Lädt…
-              </>
-            ) : (
-              "Mehr laden"
-            )}
-          </button>
+      {hasMore && posts.length > 0 && (
+        <div className="mt-6 flex flex-col items-center px-4 pb-2">
+          <div
+            ref={loadMoreSentinelRef}
+            className="h-2 w-full shrink-0"
+            aria-hidden
+          />
+          {(isLoadingMore || isLoading) && (
+            <div
+              className="flex h-11 items-center gap-2 text-sm text-zinc-400"
+              aria-live="polite"
+            >
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              Lädt…
+            </div>
+          )}
         </div>
       )}
     </div>

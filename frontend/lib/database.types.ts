@@ -519,6 +519,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      feed_mark_all_project_posts_seen: {
+        Args: { p_project_id: string }
+        Returns: number
+      }
       feed_unseen_count: {
         Args: { p_project_id: string }
         Returns: number

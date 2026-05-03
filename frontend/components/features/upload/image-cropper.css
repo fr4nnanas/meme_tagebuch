@@ -1,0 +1,12 @@
+/* Ergänzt react-image-crop: Standard ist touch-action:none auf dem Medium → kein Scrollen
+   bei langen Bildern / mobil. Pan nur auf dem Bild; Ziehgriffe und Auswahl behalten none. */
+.meme-crop-viewport .ReactCrop__child-wrapper > img,
+.meme-crop-viewport .ReactCrop__child-wrapper > video {
+  touch-action: pan-x pan-y pinch-zoom;
+}
+
+.meme-crop-viewport .ReactCrop__crop-selection,
+.meme-crop-viewport .ReactCrop__drag-handle,
+.meme-crop-viewport .ReactCrop__drag-bar {
+  touch-action: none;
+}

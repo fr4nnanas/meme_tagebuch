@@ -6,12 +6,18 @@ const EXPORT_POST_PAGE = 500;
 const IN_CHUNK = 150;
 
 /** Rohdaten für offline ZIP / data.json (Pfad im Storage wie in der DB). */
+export interface ExportPayloadUser {
+  id: string;
+  username: string;
+  avatar_url: string | null;
+}
+
 export interface ExportPayloadComment {
   id: string;
   created_at: string;
   content: string;
   like_count: number;
-  user: { username: string };
+  user: ExportPayloadUser;
 }
 
 export interface ExportPayloadPost {
@@ -19,8 +25,12 @@ export interface ExportPayloadPost {
   created_at: string;
   caption: string | null;
   meme_type: string;
+  pipeline: string;
+  pipeline_input_text: string | null;
   meme_image_url: string;
-  user: { username: string };
+  /** Storage-Pfad Original-Upload (für spätere Offline-Nutzung / Transparenz) */
+  original_image_url: string;
+  user: ExportPayloadUser;
   like_count: number;
   comments: ExportPayloadComment[];
 }
@@ -31,7 +41,11 @@ export interface ProjectExportPayload {
   posts: ExportPayloadPost[];
 }
 
-type UsersJoin = { username: string } | null;
+type UsersJoin = {
+  id: string;
+  username: string;
+  avatar_url: string | null;
+} | null;
 
 function chunkIds<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -39,9 +53,13 @@ function chunkIds<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-function readUsername(joined: unknown): string {
+function readUser(joined: unknown): ExportPayloadUser {
   const u = (Array.isArray(joined) ? joined[0] : joined) as UsersJoin;
-  return u?.username ?? "Unbekannt";
+  return {
+    id: u?.id ?? "",
+    username: u?.username ?? "Unbekannt",
+    avatar_url: u?.avatar_url ?? null,
+  };
 }
 
 export async function fetchProjectExportDataAction(
@@ -68,6 +86,9 @@ export async function fetchProjectExportDataAction(
       caption: string | null;
       meme_image_url: string;
       meme_type: string;
+      pipeline: string;
+      pipeline_input_text: string | null;
+      original_image_url: string;
       created_at: string;
       users: unknown;
     }[] = [];
@@ -78,7 +99,7 @@ export async function fetchProjectExportDataAction(
       const { data: batch, error: postsError } = await supabase
         .from("posts")
         .select(
-          "id, caption, meme_image_url, meme_type, created_at, users!user_id(username)",
+          "id, caption, meme_image_url, meme_type, pipeline, pipeline_input_text, original_image_url, created_at, users!user_id(id, username, avatar_url)",
         )
         .eq("project_id", projectId)
         .not("meme_image_url", "is", null)
@@ -113,7 +134,9 @@ export async function fetchProjectExportDataAction(
     for (const ids of chunkIds(postIds, IN_CHUNK)) {
       const { data: cBatch, error: cErr } = await supabase
         .from("comments")
-        .select("id, post_id, content, created_at, users!user_id(username)")
+        .select(
+          "id, post_id, content, created_at, users!user_id(id, username, avatar_url)",
+        )
         .in("post_id", ids)
         .order("created_at", { ascending: true });
       if (cErr) return { error: cErr.message };
@@ -143,7 +166,7 @@ export async function fetchProjectExportDataAction(
         created_at: c.created_at,
         content: c.content,
         like_count: commentLikeCount.get(c.id) ?? 0,
-        user: { username: readUsername(c.users) },
+        user: readUser(c.users),
       };
       const list = commentsByPost.get(c.post_id) ?? [];
       list.push(item);
@@ -168,8 +191,11 @@ export async function fetchProjectExportDataAction(
       created_at: p.created_at,
       caption: p.caption,
       meme_type: p.meme_type,
+      pipeline: p.pipeline,
+      pipeline_input_text: p.pipeline_input_text,
       meme_image_url: p.meme_image_url,
-      user: { username: readUsername(p.users) },
+      original_image_url: p.original_image_url,
+      user: readUser(p.users),
       like_count: postLikeCount.get(p.id) ?? 0,
       comments: commentsByPost.get(p.id) ?? [],
     }));

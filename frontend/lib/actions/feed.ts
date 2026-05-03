@@ -17,6 +17,11 @@ export interface PostWithDetails {
   caption: string | null;
   meme_image_url: string | null;
   meme_type: string;
+  pipeline: string;
+  pipeline_input_text: string | null;
+  original_image_url: string;
+  /** Signierte URL zum Original-Upload (für Lightbox / Transparenz) */
+  original_signed_url: string | null;
   created_at: string;
   user: PostUser;
   like_count: number;
@@ -58,7 +63,7 @@ export async function fetchPostsAction(
     const { data: postsRaw, error: postsError } = await supabase
       .from("posts")
       .select(
-        "id, user_id, project_id, caption, meme_image_url, meme_type, created_at, users!user_id(username, avatar_url)",
+        "id, user_id, project_id, caption, meme_image_url, original_image_url, pipeline, pipeline_input_text, meme_type, created_at, users!user_id(username, avatar_url)",
       )
       .eq("project_id", projectId)
       .not("meme_image_url", "is", null)
@@ -92,6 +97,24 @@ export async function fetchPostsAction(
       }
     }
 
+    const originalPaths = [
+      ...new Set(
+        postsRaw.map((p) => p.original_image_url as string).filter(Boolean),
+      ),
+    ];
+    const originalSignedMap: Record<string, string> = {};
+    if (originalPaths.length > 0) {
+      const { data: signedOrig } = await supabase.storage
+        .from("originals")
+        .createSignedUrls(originalPaths, 3600);
+      if (signedOrig) {
+        originalPaths.forEach((path, i) => {
+          const su = signedOrig[i];
+          if (su?.signedUrl) originalSignedMap[path] = su.signedUrl;
+        });
+      }
+    }
+
     const likeCountMap: Record<string, number> = {};
     const likedByMeSet = new Set<string>();
     for (const like of likesRaw ?? []) {
@@ -107,6 +130,7 @@ export async function fetchPostsAction(
     const posts: PostWithDetails[] = postsRaw.map((p) => {
       const rawUser = p.users;
       const userInfo = Array.isArray(rawUser) ? rawUser[0] : rawUser;
+      const origPath = p.original_image_url as string;
       return {
         id: p.id,
         user_id: p.user_id,
@@ -114,6 +138,11 @@ export async function fetchPostsAction(
         caption: p.caption,
         meme_image_url: p.meme_image_url,
         meme_type: p.meme_type,
+        pipeline: p.pipeline as string,
+        pipeline_input_text: (p as { pipeline_input_text?: string | null })
+          .pipeline_input_text ?? null,
+        original_image_url: origPath,
+        original_signed_url: originalSignedMap[origPath] ?? null,
         created_at: p.created_at,
         user: {
           username: (userInfo as PostUser | null)?.username ?? "Unbekannt",
@@ -192,12 +221,35 @@ export async function fetchUnseenPostsAction(
     const postIds = unseenRows.map((p) => p.id);
     const userIds = [...new Set(unseenRows.map((p) => p.user_id))];
 
-    const [{ data: usersData }, { data: likesRaw }, { data: commentsRaw }] =
+    const [{ data: usersData }, { data: likesRaw }, { data: commentsRaw }, { data: postExtras }] =
       await Promise.all([
         supabase.from("users").select("id, username, avatar_url").in("id", userIds),
         supabase.from("post_likes").select("post_id, user_id").in("post_id", postIds),
         supabase.from("comments").select("post_id").in("post_id", postIds),
+        supabase
+          .from("posts")
+          .select("id, pipeline, pipeline_input_text, original_image_url")
+          .in("id", postIds),
       ]);
+
+    const extraById = new Map(
+      (postExtras ?? []).map((row) => {
+        const r = row as {
+          id: string;
+          pipeline: string;
+          pipeline_input_text: string | null;
+          original_image_url: string;
+        };
+        return [
+          r.id,
+          {
+            pipeline: r.pipeline,
+            pipeline_input_text: r.pipeline_input_text,
+            original_image_url: r.original_image_url,
+          },
+        ] as const;
+      }),
+    );
 
     const userMap = new Map(
       (usersData ?? []).map((u) => [
@@ -223,6 +275,26 @@ export async function fetchUnseenPostsAction(
       }
     }
 
+    const unseenOriginalPaths = [
+      ...new Set(
+        [...extraById.values()]
+          .map((v) => v.original_image_url)
+          .filter(Boolean),
+      ),
+    ];
+    const originalSignedMap: Record<string, string> = {};
+    if (unseenOriginalPaths.length > 0) {
+      const { data: signedOrig } = await supabase.storage
+        .from("originals")
+        .createSignedUrls(unseenOriginalPaths, 3600);
+      if (signedOrig) {
+        unseenOriginalPaths.forEach((path, i) => {
+          const su = signedOrig[i];
+          if (su?.signedUrl) originalSignedMap[path] = su.signedUrl;
+        });
+      }
+    }
+
     const likeCountMap: Record<string, number> = {};
     const likedByMeSet = new Set<string>();
     for (const like of likesRaw ?? []) {
@@ -237,6 +309,8 @@ export async function fetchUnseenPostsAction(
 
     const posts: PostWithDetails[] = unseenRows.map((p) => {
       const uinfo = userMap.get(p.user_id);
+      const ex = extraById.get(p.id);
+      const origPath = ex?.original_image_url ?? "";
       return {
         id: p.id,
         user_id: p.user_id,
@@ -244,6 +318,10 @@ export async function fetchUnseenPostsAction(
         caption: p.caption,
         meme_image_url: p.meme_image_url,
         meme_type: p.meme_type,
+        pipeline: ex?.pipeline ?? "direct",
+        pipeline_input_text: ex?.pipeline_input_text ?? null,
+        original_image_url: origPath,
+        original_signed_url: origPath ? (originalSignedMap[origPath] ?? null) : null,
         created_at: p.created_at,
         user: {
           username: uinfo?.username ?? "Unbekannt",
@@ -260,6 +338,28 @@ export async function fetchUnseenPostsAction(
   } catch (err) {
     console.error("[fetchUnseenPostsAction]", err);
     return { posts: [], hasMore: false, error: "Fehler beim Laden" };
+  }
+}
+
+export async function markAllProjectPostsViewedAction(
+  projectId: string,
+): Promise<{ marked: number; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { marked: 0, error: "Nicht angemeldet" };
+
+    const { data, error } = await supabase.rpc("feed_mark_all_project_posts_seen", {
+      p_project_id: projectId,
+    });
+
+    if (error) return { marked: 0, error: error.message };
+    return { marked: Number(data ?? 0) };
+  } catch (err) {
+    console.error("[markAllProjectPostsViewedAction]", err);
+    return { marked: 0, error: "Fehler beim Speichern" };
   }
 }
 
@@ -310,7 +410,7 @@ export async function fetchPostDetailAction(
     const { data: p, error: postError } = await supabase
       .from("posts")
       .select(
-        "id, user_id, project_id, caption, meme_image_url, original_image_url, meme_type, created_at, users!user_id(username, avatar_url)",
+        "id, user_id, project_id, caption, meme_image_url, original_image_url, pipeline, pipeline_input_text, meme_type, created_at, users!user_id(username, avatar_url)",
       )
       .eq("id", postId)
       .maybeSingle();
@@ -337,6 +437,14 @@ export async function fetchPostDetailAction(
       signedUrl = signedUrls?.[0]?.signedUrl ?? null;
     }
 
+    let originalSignedUrl: string | null = null;
+    if (p.original_image_url) {
+      const { data: signedOrig } = await supabase.storage
+        .from("originals")
+        .createSignedUrls([p.original_image_url], 3600);
+      originalSignedUrl = signedOrig?.[0]?.signedUrl ?? null;
+    }
+
     let like_count = 0;
     let liked_by_me = false;
     for (const like of likesRaw ?? []) {
@@ -347,6 +455,11 @@ export async function fetchPostDetailAction(
     const rawUser = p.users;
     const userInfo = Array.isArray(rawUser) ? rawUser[0] : rawUser;
 
+    const row = p as typeof p & {
+      pipeline: string;
+      pipeline_input_text: string | null;
+    };
+
     const post: PostWithDetails = {
       id: p.id,
       user_id: p.user_id,
@@ -354,6 +467,10 @@ export async function fetchPostDetailAction(
       caption: p.caption,
       meme_image_url: p.meme_image_url,
       meme_type: p.meme_type,
+      pipeline: row.pipeline,
+      pipeline_input_text: row.pipeline_input_text,
+      original_image_url: p.original_image_url as string,
+      original_signed_url: originalSignedUrl,
       created_at: p.created_at,
       user: {
         username: (userInfo as PostUser | null)?.username ?? "Unbekannt",
@@ -369,6 +486,49 @@ export async function fetchPostDetailAction(
   } catch (err) {
     console.error("[fetchPostDetailAction]", err);
     return { post: null, error: "Fehler beim Laden des Posts" };
+  }
+}
+
+export interface PostLiker {
+  user_id: string;
+  username: string;
+  avatar_url: string | null;
+}
+
+/** Projektmitglieder: Liste der Nutzer, die diesen Post geliked haben (neueste zuerst). */
+export async function fetchPostLikersAction(
+  postId: string,
+): Promise<{ likers: PostLiker[]; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { likers: [], error: "Nicht angemeldet" };
+
+    const { data: rows, error } = await supabase
+      .from("post_likes")
+      .select("user_id, created_at, users!user_id(username, avatar_url)")
+      .eq("post_id", postId)
+      .order("created_at", { ascending: false });
+
+    if (error) return { likers: [], error: error.message };
+    if (!rows?.length) return { likers: [] };
+
+    const likers: PostLiker[] = rows.map((row) => {
+      const rawUser = row.users;
+      const userInfo = Array.isArray(rawUser) ? rawUser[0] : rawUser;
+      return {
+        user_id: row.user_id,
+        username: (userInfo as PostUser | null)?.username ?? "Unbekannt",
+        avatar_url: (userInfo as PostUser | null)?.avatar_url ?? null,
+      };
+    });
+
+    return { likers };
+  } catch (err) {
+    console.error("[fetchPostLikersAction]", err);
+    return { likers: [], error: "Fehler beim Laden der Likes" };
   }
 }
 

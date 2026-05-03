@@ -7,6 +7,7 @@ import {
   Heart,
   Loader2,
   MessageCircle,
+  Share2,
   Sparkles,
   X,
 } from "lucide-react";
@@ -19,7 +20,11 @@ import {
 } from "@/lib/actions/feed";
 import { useJobContext } from "@/components/features/app/job-context";
 import { CommentThread } from "@/components/features/feed/comment-thread";
+import { PostLikersOverlay } from "@/components/features/feed/post-likers-overlay";
+import { MemeImageLightbox } from "@/components/shared/meme-image-lightbox";
+import { MemePromptDisclosure } from "@/components/shared/meme-prompt-disclosure";
 import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
+import { shareMemeFromPost } from "@/lib/share/web-share";
 import { getJobStatusForPostAction } from "@/lib/actions/meme-job";
 import type { JobStatusResponse } from "@/lib/meme/job-status-types";
 
@@ -43,8 +48,6 @@ interface ProfilePostDetailSheetProps {
   /** Thumbnail-/Lightbox-URL für sofortiges Bild während Laden */
   fallbackImageSrc: string | null;
   currentUserId: string;
-  /** True, wenn das Profil-Raster dem eingeloggten Nutzer gehört – dann sind alle geöffneten Posts seine Posts (Caption bearbeiten). */
-  isProfileOwner: boolean;
   onClose: () => void;
 }
 
@@ -52,7 +55,6 @@ export function ProfilePostDetailSheet({
   postId,
   fallbackImageSrc,
   currentUserId,
-  isProfileOwner,
   onClose,
 }: ProfilePostDetailSheetProps) {
   const { markJobCompleted } = useJobContext();
@@ -83,6 +85,9 @@ export function ProfilePostDetailSheet({
   const [isGeneratingCaption, startGenerateCaptionTransition] = useTransition();
   const [isSavingCaption, startSaveCaptionTransition] = useTransition();
   const [isLiking, startLikeTransition] = useTransition();
+  const [isSharing, startShareTransition] = useTransition();
+  const [likersOpen, setLikersOpen] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   useEffect(() => {
     if (!postId) {
@@ -92,6 +97,7 @@ export function ProfilePostDetailSheet({
       return;
     }
 
+    setLightboxOpen(false);
     let cancelled = false;
     setIsLoadingDetail(true);
     setLoadError(null);
@@ -128,6 +134,10 @@ export function ProfilePostDetailSheet({
   }, [postId]);
 
   useEffect(() => {
+    setLikersOpen(false);
+  }, [postId]);
+
+  useEffect(() => {
     if (!postId) return;
     const original = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -144,7 +154,6 @@ export function ProfilePostDetailSheet({
     if (
       !post ||
       post.meme_image_url ||
-      !isProfileOwner ||
       String(post.user_id) !== String(currentUserId)
     ) {
       setMemeJobError(null);
@@ -218,7 +227,7 @@ export function ProfilePostDetailSheet({
       cancelled = true;
       if (interval) clearInterval(interval);
     };
-  }, [post, isProfileOwner, currentUserId, markJobCompleted]);
+  }, [post, currentUserId, markJobCompleted]);
 
   function handleLike() {
     if (!post || isLiking) return;
@@ -283,13 +292,31 @@ export function ProfilePostDetailSheet({
     setShowCaptionEdit(false);
   }
 
+  function handleShareMeme() {
+    if (!post?.signed_url) return;
+    startShareTransition(async () => {
+      const outcome = await shareMemeFromPost({
+        imageUrl: post.signed_url,
+        username: post.user.username,
+        userId: post.user_id,
+        caption: currentCaption ?? post.caption ?? null,
+      });
+      if (outcome === "shared") {
+        toast.success("Geteilt.");
+      } else if (outcome === "clipboard") {
+        toast.success("Profil-Link in die Zwischenablage kopiert.");
+      } else if (outcome === "unavailable") {
+        toast.error("Teilen wird hier nicht unterstützt.");
+      }
+    });
+  }
+
   if (!postId) return null;
 
-  /** Eigenes Profil-Raster + Post gehört dem eingeloggten Nutzer (Server prüft beim Speichern erneut). */
-  const canEditCaption =
-    isProfileOwner &&
-    post !== null &&
-    String(post.user_id) === String(currentUserId);
+  /** Post-Autor kann Caption bearbeiten (Server prüft beim Speichern erneut). */
+  const isPostAuthor =
+    post !== null && String(post.user_id) === String(currentUserId);
+  const canEditCaption = isPostAuthor;
   const imgSrc = post?.signed_url ?? fallbackImageSrc;
   const createdAt = post
     ? new Intl.DateTimeFormat("de-DE", {
@@ -301,12 +328,7 @@ export function ProfilePostDetailSheet({
       }).format(new Date(post.created_at))
     : "";
 
-  const isOwnerOfPipelinePost =
-    Boolean(
-      post &&
-        isProfileOwner &&
-        String(post.user_id) === String(currentUserId),
-    );
+  const isOwnerOfPipelinePost = Boolean(isPostAuthor && post);
   const pipelineStaleMs = 3 * 60 * 1000;
   const pipelineUpdatedMs = jobPollDetail?.jobUpdatedAt
     ? new Date(jobPollDetail.jobUpdatedAt).getTime()
@@ -319,6 +341,21 @@ export function ProfilePostDetailSheet({
 
   return (
     <>
+      {postId && (
+        <PostLikersOverlay
+          postId={postId}
+          open={likersOpen}
+          onOpenChange={setLikersOpen}
+        />
+      )}
+
+      <MemeImageLightbox
+        open={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+        memeSrc={post?.signed_url ?? fallbackImageSrc}
+        originalSrc={post?.original_signed_url ?? null}
+      />
+
       <div
         className="fixed inset-0 z-[30] bg-black/70 backdrop-blur-sm"
         onClick={handleBackdropClose}
@@ -326,7 +363,25 @@ export function ProfilePostDetailSheet({
 
       <div className="fixed inset-0 z-[35] flex flex-col overflow-hidden">
         <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-2 border-b border-zinc-800 bg-zinc-900/95 px-2 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-          <span className="w-10 shrink-0" aria-hidden />
+          <div className="flex w-10 shrink-0 justify-center">
+            {post?.signed_url ? (
+              <button
+                type="button"
+                onClick={handleShareMeme}
+                disabled={isSharing}
+                aria-label="Meme teilen"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-50"
+              >
+                {isSharing ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Share2 className="h-5 w-5" />
+                )}
+              </button>
+            ) : (
+              <span className="w-10" aria-hidden />
+            )}
+          </div>
           <div className="flex min-w-0 justify-center px-2 text-center">
             {post ? (
               <div className="inline-flex max-w-full items-center justify-center gap-2 rounded-xl py-1">
@@ -375,18 +430,29 @@ export function ProfilePostDetailSheet({
             <>
               <div className="mx-auto aspect-[2/3] w-full max-w-md bg-zinc-800">
                 {imgSrc ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={imgSrc}
-                    alt="Meme"
-                    className="h-full w-full object-cover"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setLightboxOpen(true)}
+                    aria-label="Bild vergrößern"
+                    className="relative block h-full w-full cursor-zoom-in border-0 bg-transparent p-0"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={imgSrc}
+                      alt="Meme"
+                      className="h-full w-full object-cover"
+                    />
+                  </button>
                 ) : (
                   <div className="flex h-full min-h-[200px] w-full items-center justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-zinc-600" />
                   </div>
                 )}
               </div>
+
+              {!isLoadingDetail && post && post.meme_image_url ? (
+                <MemePromptDisclosure pipelineInputText={post.pipeline_input_text} />
+              ) : null}
 
               {!isLoadingDetail && post && !post.meme_image_url && (
                 <div className="border-b border-zinc-800 px-4 py-4">
@@ -408,7 +474,7 @@ export function ProfilePostDetailSheet({
                         </Link>
                       )}
                     </div>
-                  ) : !isProfileOwner ? (
+                  ) : !isPostAuthor ? (
                     <p className="text-center text-sm text-zinc-400">
                       Meme-Erstellung noch in Arbeit
                     </p>
@@ -443,7 +509,7 @@ export function ProfilePostDetailSheet({
 
               {!isLoadingDetail && post && (
                 <>
-                  <div className="flex items-center gap-1 border-b border-zinc-800 px-4 py-2">
+                  <div className="flex flex-wrap items-center gap-1 border-b border-zinc-800 px-4 py-2">
                     <button
                       type="button"
                       onClick={handleLike}
@@ -480,6 +546,17 @@ export function ProfilePostDetailSheet({
                       <MessageCircle className="h-6 w-6" />
                       <span>{commentCount}</span>
                     </button>
+
+                    {optimisticLike.count > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setLikersOpen(true)}
+                        aria-haspopup="dialog"
+                        className="flex h-11 items-center rounded-full px-3 text-sm font-medium text-zinc-400 underline-offset-2 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+                      >
+                        Geliked
+                      </button>
+                    )}
                   </div>
 
                   <div className="px-4 pb-6 pt-2">

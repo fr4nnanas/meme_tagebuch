@@ -273,7 +273,6 @@ export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridPro
         postId={detailPostId}
         fallbackImageSrc={detailFallbackSrc}
         currentUserId={currentUserId}
-        isProfileOwner={isOwner}
         onClose={closePostDetail}
       />
     </>

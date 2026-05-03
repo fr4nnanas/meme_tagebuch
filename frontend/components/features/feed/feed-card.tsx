@@ -8,6 +8,7 @@ import {
   Loader2,
   MessageCircle,
   MoreVertical,
+  Share2,
   Sparkles,
   Trash2,
   X,
@@ -20,8 +21,12 @@ import {
   updatePostCaptionAction,
   type PostWithDetails,
 } from "@/lib/actions/feed";
+import { MemeImageLightbox } from "@/components/shared/meme-image-lightbox";
+import { MemePromptDisclosure } from "@/components/shared/meme-prompt-disclosure";
 import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
+import { shareMemeFromPost } from "@/lib/share/web-share";
 import { CommentThread } from "./comment-thread";
+import { PostLikersOverlay } from "./post-likers-overlay";
 
 interface FeedCardProps {
   post: PostWithDetails;
@@ -68,6 +73,9 @@ export function FeedCard({
   const [isSavingCaption, startSaveCaptionTransition] = useTransition();
   const [isDeletingPost, startDeleteTransition] = useTransition();
   const [isLiking, startLikeTransition] = useTransition();
+  const [isSharing, startShareTransition] = useTransition();
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [likersOpen, setLikersOpen] = useState(false);
   const articleRef = useRef<HTMLElement>(null);
   const viewTracked = useRef(false);
 
@@ -167,6 +175,25 @@ export function FeedCard({
     setShowCaptionEdit(false);
   }
 
+  function handleShareMeme() {
+    if (!post.signed_url || isSharing) return;
+    startShareTransition(async () => {
+      const outcome = await shareMemeFromPost({
+        imageUrl: post.signed_url,
+        username: post.user.username,
+        userId: post.user_id,
+        caption: currentCaption ?? post.caption ?? null,
+      });
+      if (outcome === "shared") {
+        toast.success("Geteilt.");
+      } else if (outcome === "clipboard") {
+        toast.success("Profil-Link in die Zwischenablage kopiert.");
+      } else if (outcome === "unavailable") {
+        toast.error("Teilen wird hier nicht unterstützt.");
+      }
+    });
+  }
+
   const createdAt = new Intl.DateTimeFormat("de-DE", {
     day: "2-digit",
     month: "2-digit",
@@ -177,6 +204,13 @@ export function FeedCard({
 
   return (
     <>
+      <MemeImageLightbox
+        open={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+        memeSrc={post.signed_url}
+        originalSrc={post.original_signed_url}
+      />
+
       <article
         ref={articleRef}
         className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-800"
@@ -247,13 +281,20 @@ export function FeedCard({
         {/* Meme image */}
         <div className="aspect-[2/3] w-full overflow-hidden bg-zinc-800">
           {post.signed_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={post.signed_url}
-              alt="Meme"
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
+            <button
+              type="button"
+              onClick={() => setLightboxOpen(true)}
+              aria-label="Bild vergrößern"
+              className="relative block h-full w-full cursor-zoom-in border-0 bg-transparent p-0"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={post.signed_url}
+                alt="Meme"
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            </button>
           ) : (
             <div className="flex h-full w-full items-center justify-center text-zinc-600">
               <Loader2 className="h-8 w-8 animate-spin" />
@@ -261,44 +302,77 @@ export function FeedCard({
           )}
         </div>
 
-        {/* Actions: Like + Comment */}
+        <MemePromptDisclosure pipelineInputText={post.pipeline_input_text} />
+
+        {/* Actions: Kommentar, Like, Geliked, Teilen (rechts) */}
         <div className="flex items-center gap-1 px-3 pt-2">
-          <button
-            type="button"
-            onClick={handleLike}
-            disabled={isLiking}
-            aria-label={optimisticLike.liked ? "Like entfernen" : "Liken"}
-            className="flex h-10 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed"
-          >
-            <Heart
-              className={`h-5 w-5 transition-colors ${
-                optimisticLike.liked
-                  ? "fill-orange-500 text-orange-500"
-                  : "text-zinc-400"
-              }`}
-            />
-            <span
-              className={
-                optimisticLike.liked ? "text-orange-400" : "text-zinc-400"
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+            <button
+              type="button"
+              onClick={() =>
+                document.getElementById(`comments-${post.id}`)?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "start",
+                })
               }
+              aria-label="Zu den Kommentaren scrollen"
+              className="flex h-10 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
             >
-              {optimisticLike.count}
-            </span>
-          </button>
+              <MessageCircle className="h-5 w-5" />
+              <span>{post.comment_count}</span>
+            </button>
+
+            <div className="flex items-center gap-0">
+              <button
+                type="button"
+                onClick={handleLike}
+                disabled={isLiking}
+                aria-label={optimisticLike.liked ? "Like entfernen" : "Liken"}
+                className={`flex h-10 items-center gap-1.5 rounded-full text-sm font-medium transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed ${
+                  optimisticLike.count > 0 ? "pl-3 pr-0.5" : "px-3"
+                }`}
+              >
+                <Heart
+                  className={`h-5 w-5 transition-colors ${
+                    optimisticLike.liked
+                      ? "fill-orange-500 text-orange-500"
+                      : "text-zinc-400"
+                  }`}
+                />
+                <span
+                  className={
+                    optimisticLike.liked ? "text-orange-400" : "text-zinc-400"
+                  }
+                >
+                  {optimisticLike.count}
+                </span>
+              </button>
+
+              {optimisticLike.count > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setLikersOpen(true)}
+                  aria-haspopup="dialog"
+                  className="flex h-10 items-center rounded-full pl-0.5 pr-3 text-sm font-medium text-zinc-400 underline-offset-2 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+                >
+                  Geliked
+                </button>
+              )}
+            </div>
+          </div>
 
           <button
             type="button"
-            onClick={() =>
-              document.getElementById(`comments-${post.id}`)?.scrollIntoView({
-                behavior: "smooth",
-                block: "start",
-              })
-            }
-            aria-label="Zu den Kommentaren scrollen"
-            className="flex h-10 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+            onClick={handleShareMeme}
+            disabled={isSharing || !post.signed_url}
+            aria-label="Meme teilen"
+            className="flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <MessageCircle className="h-5 w-5" />
-            <span>{post.comment_count}</span>
+            {isSharing ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Share2 className="h-5 w-5" />
+            )}
           </button>
         </div>
 
@@ -384,6 +458,12 @@ export function FeedCard({
           />
         </div>
       </article>
+
+      <PostLikersOverlay
+        postId={post.id}
+        open={likersOpen}
+        onOpenChange={setLikersOpen}
+      />
     </>
   );
 }

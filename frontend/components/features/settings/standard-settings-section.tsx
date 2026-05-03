@@ -22,7 +22,8 @@ export function StandardSettingsSection() {
           <div>
             <h2 className="text-sm font-medium text-zinc-400">Offline-Export</h2>
             <p className="mt-1 text-xs text-zinc-500">
-              ZIP mit HTML-Galerie, Bildern und JSON für das ausgewählte Projekt.
+              Offline-ZIP laden oder teilen, Link zum Projekt-Feed schicken, einzelne
+              Memes teilst du im Feed über das Teilen-Symbol.
             </p>
           </div>
           <ProjectExportButton

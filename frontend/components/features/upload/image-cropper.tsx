@@ -8,6 +8,7 @@ import ReactCrop, {
   type PixelCrop,
 } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
+import "./image-cropper.css";
 
 // Standard: 2:3 (Portrait) – Meme-Upload / OpenAI 1024×1536
 const DEFAULT_ASPECT_RATIO = 2 / 3;
@@ -129,24 +130,32 @@ export function ImageCropper({
 
   return (
     <div className="flex min-h-0 flex-col gap-3">
-      <div className="min-h-0 overflow-hidden rounded-xl border border-zinc-800">
-        <ReactCrop
-          crop={crop}
-          onChange={(c) => setCrop(c)}
-          onComplete={(c) => setCompletedCrop(c)}
-          aspect={aspectRatio}
-          minWidth={60}
-          keepSelection
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            ref={imgRef}
-            src={imageSrc}
-            alt="Zu schneidendes Foto"
-            className="mx-auto max-h-[50dvh] w-full max-w-full object-contain sm:max-h-[52dvh]"
-            onLoad={onImageLoad}
-          />
-        </ReactCrop>
+      <div
+        className="meme-crop-viewport min-h-0 w-full max-h-[min(78dvh,calc(100svh-10rem))] overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-xl border border-zinc-800 [-webkit-overflow-scrolling:touch]"
+      >
+        <div className="flex min-h-0 w-full justify-center p-1 sm:p-2">
+          <ReactCrop
+            className="mx-auto max-w-full"
+            crop={crop}
+            onChange={(c) => setCrop(c)}
+            onComplete={(c) => setCompletedCrop(c)}
+            aspect={aspectRatio}
+            minWidth={60}
+            keepSelection
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              ref={imgRef}
+              src={imageSrc}
+              alt="Zu schneidendes Foto"
+              className="mx-auto block h-auto min-h-0 w-full min-w-0 max-w-full object-contain"
+              style={{
+                maxHeight: "min(68dvh, calc(100svh - 14rem))",
+              }}
+              onLoad={onImageLoad}
+            />
+          </ReactCrop>
+        </div>
       </div>
 
       <div className="flex gap-3">
