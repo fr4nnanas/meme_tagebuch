@@ -68,6 +68,12 @@ export function PostGrid({
     return thumb ? (thumb.signed_url ?? thumb.original_signed_url) : null;
   }, [detailPostId, result?.posts]);
 
+  const detailFallbackOriginalSrc = useMemo(() => {
+    if (!detailPostId || !result?.posts.length) return null;
+    const thumb = result.posts.find((p) => p.id === detailPostId);
+    return thumb?.original_signed_url ?? null;
+  }, [detailPostId, result?.posts]);
+
   const closePostDetail = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
     if (!params.has("post")) return;
@@ -154,9 +160,11 @@ export function PostGrid({
         .filter((p) => p.meme_image_url)
         .map((p) => p.meme_image_url as string);
 
-      const originalPaths = posts
-        .filter((p) => !p.meme_image_url && p.original_image_url)
-        .map((p) => p.original_image_url);
+      const originalPaths = [
+        ...new Set(
+          posts.map((p) => p.original_image_url).filter(Boolean),
+        ),
+      ];
 
       const memeSignedMap: Record<string, string> = {};
       const originalSignedMap: Record<string, string> = {};
@@ -372,6 +380,7 @@ export function PostGrid({
       <ProfilePostDetailSheet
         postId={detailPostId}
         fallbackImageSrc={detailFallbackSrc}
+        fallbackOriginalSrc={detailFallbackOriginalSrc}
         currentUserId={currentUserId}
         isAdmin={viewerIsAdmin}
         entryAsLightbox

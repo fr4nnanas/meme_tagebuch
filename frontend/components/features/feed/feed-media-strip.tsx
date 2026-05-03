@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 const DOUBLE_TAP_MS = 320;
 const TAP_MOVE_TOLERANCE_PX = 14;
@@ -29,6 +29,19 @@ export function FeedMediaStrip({
 }: FeedMediaStripProps) {
   const lastTapRef = useRef(0);
   const tapStartRef = useRef<{ x: number; y: number } | null>(null);
+  const stripScrollRef = useRef<HTMLDivElement>(null);
+  const [activeSide, setActiveSide] = useState<"meme" | "original">("meme");
+
+  const syncActiveSideFromScroll = useCallback(() => {
+    const el = stripScrollRef.current;
+    if (!el) return;
+    const page = Math.round(el.scrollLeft / Math.max(1, el.clientWidth));
+    setActiveSide(page >= 1 ? "original" : "meme");
+  }, []);
+
+  useEffect(() => {
+    syncActiveSideFromScroll();
+  }, [memeSrc, originalSrc, syncActiveSideFromScroll]);
 
   const tryRegisterDoubleTap = useCallback(() => {
     const now = Date.now();
@@ -94,6 +107,8 @@ export function FeedMediaStrip({
       onDoubleClick={handleDoubleClick}
     >
       <div
+        ref={stripScrollRef}
+        onScroll={syncActiveSideFromScroll}
         className="flex h-full w-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         aria-label="Meme; nach links wischen für Originalfoto"
         role="region"
@@ -118,13 +133,10 @@ export function FeedMediaStrip({
             loading="lazy"
             draggable={false}
           />
-          <span className="pointer-events-none absolute bottom-2 left-2 rounded bg-zinc-950/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-300">
-            Original
-          </span>
         </div>
       </div>
-      <span className="pointer-events-none absolute right-2 top-2 rounded bg-zinc-950/60 px-2 py-0.5 text-[10px] font-medium text-zinc-400">
-        ← Original
+      <span className="pointer-events-none absolute bottom-2 left-2 z-[2] rounded bg-zinc-950/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-300">
+        {activeSide === "meme" ? "Meme" : "Original"}
       </span>
     </div>
   );

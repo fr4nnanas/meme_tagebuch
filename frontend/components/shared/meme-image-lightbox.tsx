@@ -39,7 +39,8 @@ export function MemeImageLightbox({
   footer,
 }: MemeImageLightboxProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const [page, setPage] = useState<0 | 1>(1);
+  /** 0 = Meme (links, wie FeedMediaStrip), 1 = Original (rechts) */
+  const [page, setPage] = useState<0 | 1>(0);
   const onCloseRef = useRef(onClose);
   const historyPushedRef = useRef(false);
 
@@ -89,7 +90,7 @@ export function MemeImageLightbox({
 
   useEffect(() => {
     if (open) return;
-    const id = requestAnimationFrame(() => setPage(1));
+    const id = requestAnimationFrame(() => setPage(0));
     return () => cancelAnimationFrame(id);
   }, [open]);
 
@@ -101,12 +102,12 @@ export function MemeImageLightbox({
     // (CSS scroll-behavior: smooth würde scrollTo/„auto“ oft noch animieren).
     const w = el.clientWidth;
     if (w > 0) {
-      el.scrollLeft = w;
+      el.scrollLeft = 0;
       return;
     }
     const id = requestAnimationFrame(() => {
       const w2 = el.clientWidth;
-      if (w2 > 0) el.scrollLeft = w2;
+      if (w2 > 0) el.scrollLeft = 0;
     });
     return () => cancelAnimationFrame(id);
   }, [open, memeSrc, originalSrc, hasPair]);
@@ -177,16 +178,16 @@ export function MemeImageLightbox({
                 <div className="flex h-full w-full min-w-full shrink-0 snap-center snap-always items-center justify-center bg-zinc-950/50 p-2">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={originalSrc!}
-                    alt={originalAlt}
+                    src={memeSrc}
+                    alt={memeAlt}
                     className="max-h-[min(58dvh,640px)] max-w-full object-contain"
                   />
                 </div>
                 <div className="flex h-full w-full min-w-full shrink-0 snap-center snap-always items-center justify-center bg-zinc-950/50 p-2">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={memeSrc}
-                    alt={memeAlt}
+                    src={originalSrc!}
+                    alt={originalAlt}
                     className="max-h-[min(58dvh,640px)] max-w-full object-contain"
                   />
                 </div>
@@ -211,7 +212,7 @@ export function MemeImageLightbox({
                     }`}
                   >
                     <ChevronLeft className="h-4 w-4" aria-hidden />
-                    Original
+                    Meme
                   </button>
                   <button
                     type="button"
@@ -223,12 +224,12 @@ export function MemeImageLightbox({
                         : "border-zinc-600 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
                     }`}
                   >
-                    Meme
+                    Original
                     <ChevronRight className="h-4 w-4" aria-hidden />
                   </button>
                 </div>
                 <p className="max-w-md px-1 text-center text-[11px] leading-snug text-zinc-500">
-                  Nach rechts wischen zeigt das Original vor Bearbeitung und Zuschnitt. Tastatur: ← →
+                  Wie im Feed: nach links wischen zeigt das Original vor Bearbeitung und Zuschnitt. Tastatur: ← →
                 </p>
               </div>
             </>

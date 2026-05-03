@@ -68,6 +68,12 @@ export function ProjectMemeGrid({
     return thumb ? (thumb.signed_url ?? thumb.original_signed_url) : null;
   }, [detailPostId, result?.posts]);
 
+  const detailFallbackOriginalSrc = useMemo(() => {
+    if (!detailPostId || !result?.posts.length) return null;
+    const thumb = result.posts.find((p) => p.id === detailPostId);
+    return thumb?.original_signed_url ?? null;
+  }, [detailPostId, result?.posts]);
+
   const displayedPosts = useMemo(() => {
     if (!result?.posts.length) return [];
     return sortPostsForDisplay(result.posts, gridSort);
@@ -166,9 +172,9 @@ export function ProjectMemeGrid({
       .filter((p) => p.meme_image_url)
       .map((p) => p.meme_image_url as string);
 
-    const originalPaths = posts
-      .filter((p) => !p.meme_image_url && p.original_image_url)
-      .map((p) => p.original_image_url);
+    const originalPaths = [
+      ...new Set(posts.map((p) => p.original_image_url).filter(Boolean)),
+    ];
 
     const memeSignedMap: Record<string, string> = {};
     const originalSignedMap: Record<string, string> = {};
@@ -365,23 +371,43 @@ export function ProjectMemeGrid({
                     )}
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-1 border-t border-zinc-700/80 bg-zinc-900/95 px-1 py-1.5">
-                    <UserAvatarLightbox
-                      avatarUrl={post.avatar_url}
-                      username={post.username}
-                      sizeClassName="h-7 w-7 shrink-0"
-                      placeholderIconClassName="h-3.5 w-3.5"
-                    />
-                    <Link
-                      href={`/profile/${post.user_id}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="min-w-0 max-w-[34%] truncate text-left text-[11px] font-semibold leading-tight text-zinc-200 hover:text-orange-400 sm:max-w-[40%]"
-                    >
-                      {post.username}
-                    </Link>
+                  <div className="flex shrink-0 flex-col gap-0.5 border-t border-zinc-700/80 bg-zinc-900/95 px-1 py-1.5">
+                    <div className="flex items-center gap-1">
+                      <UserAvatarLightbox
+                        avatarUrl={post.avatar_url}
+                        username={post.username}
+                        sizeClassName="h-7 w-7 shrink-0"
+                        placeholderIconClassName="h-3.5 w-3.5"
+                      />
+                      <Link
+                        href={`/profile/${post.user_id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="min-w-0 flex-1 truncate text-left text-[11px] font-semibold leading-tight text-zinc-200 hover:text-orange-400"
+                      >
+                        {post.username}
+                      </Link>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(post.id);
+                          }}
+                          disabled={isDeleting}
+                          aria-label="Post löschen"
+                          className="flex h-7 w-7 shrink-0 touch-manipulation items-center justify-center rounded-full bg-zinc-800/90 text-zinc-300 opacity-100 shadow-sm transition-opacity hover:bg-red-600/90 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
+                        >
+                          {isDeleting ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      )}
+                    </div>
                     {post.meme_image_url ? (
                       <div
-                        className="flex min-w-0 shrink-0 items-center"
+                        className="flex justify-center"
                         onClick={(e) => e.stopPropagation()}
                         onKeyDown={(e) => e.stopPropagation()}
                       >
@@ -393,29 +419,10 @@ export function ProjectMemeGrid({
                           interactive
                           updateAggregateDisplayAfterSubmit={false}
                           compact
-                          className="gap-0"
+                          className="justify-center gap-0"
                         />
                       </div>
                     ) : null}
-                    <span className="min-w-0 flex-1" aria-hidden />
-                    {canDelete && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(post.id);
-                        }}
-                        disabled={isDeleting}
-                        aria-label="Post löschen"
-                        className="flex h-7 w-7 shrink-0 touch-manipulation items-center justify-center rounded-full bg-zinc-800/90 text-zinc-300 opacity-100 shadow-sm transition-opacity hover:bg-red-600/90 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
-                      >
-                        {isDeleting ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
-                      </button>
-                    )}
                   </div>
                 </div>
               );
@@ -427,6 +434,7 @@ export function ProjectMemeGrid({
       <ProfilePostDetailSheet
         postId={detailPostId}
         fallbackImageSrc={detailFallbackSrc}
+        fallbackOriginalSrc={detailFallbackOriginalSrc}
         currentUserId={currentUserId}
         isAdmin={isAdmin}
         entryAsLightbox

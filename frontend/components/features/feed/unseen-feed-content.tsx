@@ -310,7 +310,7 @@ export function UnseenFeedContent({
         <button
           type="button"
           onClick={scrollFeedToTop}
-          className="fixed bottom-24 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border border-zinc-600 bg-zinc-800/95 px-4 py-2.5 text-sm font-medium text-zinc-100 shadow-lg backdrop-blur-sm transition-colors hover:border-orange-500/50 hover:bg-zinc-800 hover:text-orange-200"
+          className="fixed left-1/2 z-40 flex max-w-[min(calc(100vw-1rem),24rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-zinc-600 bg-zinc-800/95 px-4 py-2.5 text-sm font-medium text-zinc-100 shadow-lg backdrop-blur-sm transition-colors hover:border-orange-500/50 hover:bg-zinc-800 hover:text-orange-200 top-[calc(0.75rem+env(safe-area-inset-top,0px))]"
           aria-label="An den Anfang scrollen"
         >
           <ChevronUp className="h-4 w-4 shrink-0" aria-hidden />

@@ -60,6 +60,8 @@ interface ProfilePostDetailSheetProps {
   postId: string | null;
   /** Thumbnail-/Lightbox-URL für sofortiges Bild während Laden */
   fallbackImageSrc: string | null;
+  /** Original-Signed-URL aus Raster — gleiche Wisch-Reihenfolge wie im Feed ohne Warten auf Detail */
+  fallbackOriginalSrc?: string | null;
   currentUserId: string;
   /** Eingeloggter Nutzer ist Admin (Verschieben fremder Posts) */
   isAdmin?: boolean;
@@ -75,6 +77,7 @@ interface ProfilePostDetailSheetProps {
 export function ProfilePostDetailSheet({
   postId,
   fallbackImageSrc,
+  fallbackOriginalSrc = null,
   currentUserId,
   isAdmin = false,
   entryAsLightbox = false,
@@ -488,6 +491,12 @@ export function ProfilePostDetailSheet({
       </div>
     ) : null;
 
+  const showLightboxFooterSkeleton =
+    entryAsLightbox &&
+    lightboxOpen &&
+    !postSocialActionsEl &&
+    Boolean(post?.signed_url ?? fallbackImageSrc);
+
   return (
     <>
       {postId && (
@@ -502,10 +511,12 @@ export function ProfilePostDetailSheet({
         open={lightboxOpen}
         onClose={handleLightboxRequestClose}
         memeSrc={post?.signed_url ?? fallbackImageSrc}
-        originalSrc={post?.original_signed_url ?? null}
+        originalSrc={post?.original_signed_url ?? fallbackOriginalSrc ?? null}
         historySync={!entryAsLightbox || sheetRevealed}
         footer={
-          postSocialActionsEl || (entryAsLightbox && post) ? (
+          postSocialActionsEl ||
+          (entryAsLightbox && post) ||
+          showLightboxFooterSkeleton ? (
             <>
               {entryAsLightbox && !isLoadingDetail && canMoveMeme && post ? (
                 <div className="flex justify-start border-b border-zinc-800/80 px-2 pb-2 pt-1">
@@ -532,6 +543,17 @@ export function ProfilePostDetailSheet({
                   >
                     Alle Details & Kommentare
                   </button>
+                </div>
+              ) : null}
+              {showLightboxFooterSkeleton ? (
+                <div
+                  className="mx-auto flex h-10 w-full max-w-lg items-center justify-between gap-2 px-3 py-2"
+                  aria-hidden
+                >
+                  <div className="h-9 w-20 animate-pulse rounded-full bg-zinc-800/80" />
+                  <div className="h-9 w-16 animate-pulse rounded-full bg-zinc-800/80" />
+                  <div className="h-9 max-w-[140px] flex-1 animate-pulse rounded-full bg-zinc-800/80" />
+                  <div className="h-9 w-12 animate-pulse rounded-full bg-zinc-800/80" />
                 </div>
               ) : null}
             </>

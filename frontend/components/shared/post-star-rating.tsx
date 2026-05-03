@@ -117,11 +117,16 @@ export function PostStarRating({
     });
   }
 
-  /** Kompakte Raster: schmalere Mindestbreite, gleiche Mindesthöhe für Finger. */
-  const starSz = compact ? "h-4 w-4" : "h-5 w-5 sm:h-6 sm:w-6";
+  /**
+   * Kompakt (Feed / Raster / Profil): enge Abstände + schmale Mindestbreite,
+   * damit alle 5 Sterne in schmalen Leisten sichtbar bleiben; Höhe bleibt tap-freundlich.
+   */
+  const starSz = compact ? "h-3.5 w-3.5" : "h-5 w-5 sm:h-6 sm:w-6";
   const btnInteractive = compact
-    ? "min-h-10 min-w-8 shrink-0 touch-manipulation sm:min-w-9"
-    : "min-h-10 min-w-10 shrink-0 touch-manipulation sm:min-h-11 sm:min-w-11";
+    ? "min-h-10 min-w-6 shrink-0 touch-manipulation sm:min-w-7"
+    : "min-h-10 min-w-9 shrink-0 touch-manipulation sm:min-w-10";
+
+  const innerGap = compact ? "gap-0" : "gap-0.5";
 
   return (
     <div
@@ -130,9 +135,7 @@ export function PostStarRating({
       title={titleHint}
       aria-label={titleHint}
     >
-      <div
-        className={`flex items-center ${interactive ? "gap-1" : "gap-0.5"}`}
-      >
+      <div className={`flex items-center ${innerGap}`}>
         {[1, 2, 3, 4, 5].map((n) => {
           const filled = filledStarCount >= n;
           return (
