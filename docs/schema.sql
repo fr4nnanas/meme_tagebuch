@@ -28,6 +28,8 @@ CREATE TABLE public.projects (
   name                TEXT NOT NULL,
   description         TEXT,
   ai_prompt_context   TEXT,          -- Optionaler Kontext/Masterprompt für KI-Meme-Generierung
+  -- KI-Vollbild (Typ A): max. Generierungen pro Nutzer und Kalendertag in diesem Projekt (zusätzlich zum globalen Limit)
+  daily_ai_generated_limit INT NOT NULL DEFAULT 5 CHECK (daily_ai_generated_limit >= 1 AND daily_ai_generated_limit <= 100),
   created_by          UUID NOT NULL REFERENCES public.users(id),
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -118,7 +120,7 @@ CREATE TABLE public.settings (
 
 -- Default-Einstellungen einfügen
 INSERT INTO public.settings (key, value) VALUES
-  ('daily_ai_image_limit', '5'),       -- Typ-A Meme-Generierungen pro User pro Tag
+  ('daily_ai_image_limit', '5'),       -- Typ-A Meme-Generierungen pro User pro Tag (global, alle Projekte)
   ('app_name', 'Vacation Meme Feed'),  -- App-Name (für Export, UI)
   ('default_member_project_id', '');   -- Lobby: UUID eines Projekts oder leer
 
@@ -128,6 +130,15 @@ CREATE TABLE public.daily_usage (
   date        DATE NOT NULL DEFAULT CURRENT_DATE,
   ai_images_used INT NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, date)
+);
+
+-- Tägliche KI-Nutzung pro User und Projekt (Typ A)
+CREATE TABLE public.daily_usage_project (
+  user_id     UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  project_id  UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  date        DATE NOT NULL DEFAULT CURRENT_DATE,
+  ai_images_used INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, project_id, date)
 );
 
 
@@ -144,6 +155,7 @@ CREATE INDEX idx_project_members_uid  ON public.project_members(user_id);
 CREATE INDEX idx_project_members_pid  ON public.project_members(project_id);
 CREATE INDEX idx_jobs_user_id         ON public.jobs(user_id);
 CREATE INDEX idx_jobs_status          ON public.jobs(status);
+CREATE INDEX idx_daily_usage_project_date ON public.daily_usage_project(date);
 
 
 -- =============================================================
@@ -162,6 +174,7 @@ ALTER TABLE public.comment_likes     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.invitation_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settings          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.daily_usage       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.daily_usage_project ENABLE ROW LEVEL SECURITY;
 
 
 -- Helper-Funktion: Prüft ob aktueller User Admin ist
@@ -276,6 +289,17 @@ CREATE POLICY "Nur Admin kann Settings ändern"       ON public.settings FOR UPD
 CREATE POLICY "User sieht eigene Nutzung"            ON public.daily_usage FOR SELECT USING (auth.uid() = user_id OR public.is_admin());
 CREATE POLICY "System kann Nutzung eintragen"        ON public.daily_usage FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "System kann Nutzung aktualisieren"    ON public.daily_usage FOR UPDATE USING (auth.uid() = user_id);
+
+-- --- DAILY_USAGE_PROJECT ---
+CREATE POLICY "User sieht eigene projektbezogene Nutzung"
+  ON public.daily_usage_project FOR SELECT
+  USING (auth.uid() = user_id OR public.is_admin());
+CREATE POLICY "User trägt eigene projektbezogene Nutzung ein"
+  ON public.daily_usage_project FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "User aktualisiert eigene projektbezogene Nutzung"
+  ON public.daily_usage_project FOR UPDATE
+  USING (auth.uid() = user_id);
 
 
 -- =============================================================

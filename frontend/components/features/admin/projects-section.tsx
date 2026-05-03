@@ -20,6 +20,7 @@ import {
   removeProjectMember,
   updateDefaultMemberProject,
   updateProjectBasics,
+  updateProjectDailyAiGeneratedLimit,
   updateProjectPromptContext,
 } from "@/lib/actions/admin";
 
@@ -128,13 +129,23 @@ function ProjectCard({ project, users, expanded, onToggleExpand }: ProjectCardPr
   const [projectName, setProjectName] = useState(project.name);
   const [projectDescription, setProjectDescription] = useState(project.description ?? "");
   const [promptContext, setPromptContext] = useState(project.ai_prompt_context ?? "");
+  const [aiDailyLimit, setAiDailyLimit] = useState(
+    String(project.daily_ai_generated_limit),
+  );
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     setProjectName(project.name);
     setProjectDescription(project.description ?? "");
     setPromptContext(project.ai_prompt_context ?? "");
-  }, [project.id, project.name, project.description, project.ai_prompt_context]);
+    setAiDailyLimit(String(project.daily_ai_generated_limit));
+  }, [
+    project.id,
+    project.name,
+    project.description,
+    project.ai_prompt_context,
+    project.daily_ai_generated_limit,
+  ]);
 
   const memberIds = new Set(project.project_members.map((m) => m.user_id));
   const memberUsers = users.filter((u) => memberIds.has(u.id));
@@ -205,6 +216,23 @@ function ProjectCard({ project, users, expanded, onToggleExpand }: ProjectCardPr
         toast.error(result.error, { duration: 12_000 });
       } else {
         toast.success("KI-Kontext gespeichert.");
+        router.refresh();
+      }
+    });
+  }
+
+  function handleSaveProjectAiLimit() {
+    const parsed = parseInt(aiDailyLimit, 10);
+    if (isNaN(parsed) || parsed < 1 || parsed > 100) {
+      toast.error("Limit zwischen 1 und 100.");
+      return;
+    }
+    startTransition(async () => {
+      const result = await updateProjectDailyAiGeneratedLimit(project.id, parsed);
+      if ("error" in result) {
+        toast.error(result.error, { duration: 12_000 });
+      } else {
+        toast.success("Projekt-KI-Limit gespeichert.");
         router.refresh();
       }
     });
@@ -282,6 +310,44 @@ function ProjectCard({ project, users, expanded, onToggleExpand }: ProjectCardPr
                   (projectName === project.name &&
                     projectDescription.trim() ===
                       (project.description ?? "").trim())
+                }
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-700 text-zinc-200 text-xs font-medium hover:bg-zinc-600 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+              >
+                <Save className="h-3.5 w-3.5" />
+                Speichern
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-2 pb-3 border-b border-zinc-800">
+            <p className="text-xs font-medium text-zinc-400">KI in diesem Projekt</p>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Wie viele KI-Vollbilder (Typ A) ein Nutzer pro Tag{" "}
+              <strong className="text-zinc-400">in genau diesem Projekt</strong> erzeugen
+              darf. Zusammen mit dem globalen KI-Limit (Tab „KI-Limit“) gilt jeweils das
+              niedrigere.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={aiDailyLimit}
+                onChange={(e) => setAiDailyLimit(e.target.value)}
+                aria-label="KI-Vollbilder pro Nutzer und Tag in diesem Projekt"
+                className="w-24 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <button
+                type="button"
+                onClick={handleSaveProjectAiLimit}
+                disabled={
+                  isPending ||
+                  (() => {
+                    const n = parseInt(aiDailyLimit, 10);
+                    return (
+                      isNaN(n) || n < 1 || n > 100 || n === project.daily_ai_generated_limit
+                    );
+                  })()
                 }
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-700 text-zinc-200 text-xs font-medium hover:bg-zinc-600 disabled:opacity-40 disabled:pointer-events-none transition-colors"
               >

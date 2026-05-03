@@ -6,6 +6,8 @@ export interface ProjectMemberPreview {
   id: string;
   username: string;
   avatar_url: string | null;
+  /** Veröffentlichte Memes (meme_image_url gesetzt) in diesem Projekt */
+  meme_count_in_project: number;
 }
 
 export async function fetchProjectMembersAction(
@@ -36,6 +38,20 @@ export async function fetchProjectMembersAction(
 
     if (error) return { members: [], error: error.message };
 
+    const { data: countRows, error: countErr } = await supabase
+      .from("posts")
+      .select("user_id")
+      .eq("project_id", projectId)
+      .not("meme_image_url", "is", null);
+
+    if (countErr) return { members: [], error: countErr.message };
+
+    const countByUser = new Map<string, number>();
+    for (const row of countRows ?? []) {
+      const uid = row.user_id as string;
+      countByUser.set(uid, (countByUser.get(uid) ?? 0) + 1);
+    }
+
     const members: ProjectMemberPreview[] = (rows ?? [])
       .map((r) => {
         const raw = r.users;
@@ -43,13 +59,15 @@ export async function fetchProjectMembersAction(
         if (!u || typeof u !== "object" || !("id" in u) || !("username" in u)) {
           return null;
         }
+        const id = String(u.id);
         return {
-          id: String(u.id),
+          id,
           username: String(u.username),
           avatar_url:
             "avatar_url" in u && u.avatar_url != null
               ? String(u.avatar_url)
               : null,
+          meme_count_in_project: countByUser.get(id) ?? 0,
         };
       })
       .filter((m): m is ProjectMemberPreview => m !== null)

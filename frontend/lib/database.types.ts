@@ -137,6 +137,42 @@ export type Database = {
           },
         ]
       }
+      daily_usage_project: {
+        Row: {
+          ai_images_used: number
+          date: string
+          project_id: string
+          user_id: string
+        }
+        Insert: {
+          ai_images_used?: number
+          date?: string
+          project_id: string
+          user_id: string
+        }
+        Update: {
+          ai_images_used?: number
+          date?: string
+          project_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_usage_project_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_usage_project_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invitation_tokens: {
         Row: {
           created_at: string
@@ -244,6 +280,42 @@ export type Database = {
           },
         ]
       }
+      post_star_ratings: {
+        Row: {
+          created_at: string
+          post_id: string
+          rating: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          post_id: string
+          rating: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          post_id?: string
+          rating?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_star_ratings_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_star_ratings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       post_views: {
         Row: {
           post_id: string
@@ -279,6 +351,7 @@ export type Database = {
       }
       posts: {
         Row: {
+          ai_experimental_minimal: boolean
           caption: string | null
           created_at: string
           id: string
@@ -291,9 +364,12 @@ export type Database = {
           overlay_text_top: string | null
           pipeline: string
           project_id: string
+          star_rating_avg: number | null
+          star_rating_count: number
           user_id: string
         }
         Insert: {
+          ai_experimental_minimal?: boolean
           caption?: string | null
           created_at?: string
           id?: string
@@ -306,9 +382,12 @@ export type Database = {
           overlay_text_top?: string | null
           pipeline: string
           project_id: string
+          star_rating_avg?: number | null
+          star_rating_count?: number
           user_id: string
         }
         Update: {
+          ai_experimental_minimal?: boolean
           caption?: string | null
           created_at?: string
           id?: string
@@ -320,6 +399,8 @@ export type Database = {
           overlay_text_bottom?: string | null
           overlay_text_top?: string | null
           pipeline?: string
+          star_rating_avg?: number | null
+          star_rating_count?: number
           project_id?: string
           user_id?: string
         }
@@ -412,6 +493,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string
+          daily_ai_generated_limit: number
           description: string | null
           id: string
           name: string
@@ -419,6 +501,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by: string
+          daily_ai_generated_limit?: number
           description?: string | null
           id?: string
           name: string
@@ -426,6 +509,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string
+          daily_ai_generated_limit?: number
           description?: string | null
           id?: string
           name?: string

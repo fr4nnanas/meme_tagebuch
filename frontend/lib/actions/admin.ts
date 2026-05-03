@@ -387,3 +387,41 @@ export async function updateAiLimit(
     return { error: err instanceof Error ? err.message : "Unbekannter Fehler." };
   }
 }
+
+/** Projektspezifisches Tageslimit für KI-Vollbilder (Typ A) je Nutzer in diesem Projekt. */
+export async function updateProjectDailyAiGeneratedLimit(
+  projectId: string,
+  limit: number,
+): Promise<AdminActionResult> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    return { error: "Limit muss eine ganze Zahl zwischen 1 und 100 sein." };
+  }
+
+  try {
+    const { supabase } = await ensureAdmin();
+
+    const { error } = await supabase
+      .from("projects")
+      .update({ daily_ai_generated_limit: limit })
+      .eq("id", projectId);
+
+    if (error) {
+      const msg = error.message.toLowerCase();
+      if (
+        msg.includes("daily_ai_generated_limit") ||
+        (msg.includes("column") && msg.includes("does not exist"))
+      ) {
+        return {
+          error:
+            "Die Spalte „daily_ai_generated_limit“ fehlt noch. Bitte Migration docs/migrations/010_project_daily_ai_generated_limit.sql ausführen.",
+        };
+      }
+      return { error: "Projekt-Limit konnte nicht gespeichert werden." };
+    }
+
+    revalidateAdminPages();
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Unbekannter Fehler." };
+  }
+}

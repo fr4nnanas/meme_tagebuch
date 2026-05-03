@@ -11,11 +11,11 @@ import {
 } from "react";
 import {
   Check,
+  FolderInput,
   Heart,
   Loader2,
   MessageCircle,
   Share2,
-  Sparkles,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -30,11 +30,16 @@ import { CommentThread } from "@/components/features/feed/comment-thread";
 import { PostLikersOverlay } from "@/components/features/feed/post-likers-overlay";
 import { PostRecentLikersOnImage } from "@/components/features/feed/post-recent-likers-on-image";
 import { MemeImageLightbox } from "@/components/shared/meme-image-lightbox";
+import {
+  PostStarRating,
+  type PostStarRatingSnapshot,
+} from "@/components/shared/post-star-rating";
 import { MemePromptDisclosure } from "@/components/shared/meme-prompt-disclosure";
 import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
 import { shareMemeFromPost } from "@/lib/share/web-share";
 import { getJobStatusForPostAction } from "@/lib/actions/meme-job";
 import type { JobStatusResponse } from "@/lib/meme/job-status-types";
+import { MovePostProjectDialog } from "@/components/features/feed/move-post-project-dialog";
 
 function shouldOpenMemeCompletionUI(d: JobStatusResponse): boolean {
   if (d.status !== "completed" || d.errorMsg) return false;
@@ -56,14 +61,25 @@ interface ProfilePostDetailSheetProps {
   /** Thumbnail-/Lightbox-URL für sofortiges Bild während Laden */
   fallbackImageSrc: string | null;
   currentUserId: string;
+  /** Eingeloggter Nutzer ist Admin (Verschieben fremder Posts) */
+  isAdmin?: boolean;
+  /**
+   * Wenn true (Raster/Profil): direkt die schwebende Lightbox; volles Detail-Sheet
+   * erst nach „Kommentar schreiben“, „Alle Details & Kommentare“ oder bei Ladefehler.
+   */
+  entryAsLightbox?: boolean;
   onClose: () => void;
+  onPostMoved?: () => void;
 }
 
 export function ProfilePostDetailSheet({
   postId,
   fallbackImageSrc,
   currentUserId,
+  isAdmin = false,
+  entryAsLightbox = false,
   onClose,
+  onPostMoved,
 }: ProfilePostDetailSheetProps) {
   const { markJobCompleted } = useJobContext();
   const recoveryFiredRef = useRef<string | null>(null);
@@ -90,16 +106,19 @@ export function ProfilePostDetailSheet({
   const [showCaptionEdit, setShowCaptionEdit] = useState(false);
   const [captionDraft, setCaptionDraft] = useState("");
   const [currentCaption, setCurrentCaption] = useState<string | null>(null);
-  const [isGeneratingCaption, startGenerateCaptionTransition] = useTransition();
   const [isSavingCaption, startSaveCaptionTransition] = useTransition();
   const [isLiking, startLikeTransition] = useTransition();
   const [isSharing, startShareTransition] = useTransition();
   const [likersOpen, setLikersOpen] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  /** Nach direktem Lightbox-Start: volles Sheet erst nach Nutzeraktion */
+  const [sheetRevealed, setSheetRevealed] = useState(false);
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const commentComposerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const scrollToCommentsAndFocusComposer = useCallback(() => {
     if (!post) return;
+    setSheetRevealed(true);
     setLightboxOpen(false);
     const targetId = post.id;
     window.requestAnimationFrame(() => {
@@ -120,10 +139,18 @@ export function ProfilePostDetailSheet({
       setPost(null);
       setLoadError(null);
       setIsLoadingDetail(false);
+      setSheetRevealed(false);
+      setLightboxOpen(false);
       return;
     }
 
-    setLightboxOpen(false);
+    setMoveDialogOpen(false);
+    if (entryAsLightbox) {
+      setLightboxOpen(true);
+      setSheetRevealed(false);
+    } else {
+      setLightboxOpen(false);
+    }
     let cancelled = false;
     setIsLoadingDetail(true);
     setLoadError(null);
@@ -151,7 +178,24 @@ export function ProfilePostDetailSheet({
     return () => {
       cancelled = true;
     };
-  }, [postId]);
+  }, [postId, entryAsLightbox]);
+
+  useEffect(() => {
+    if (!entryAsLightbox || !loadError) return;
+    const id = requestAnimationFrame(() => {
+      setSheetRevealed(true);
+      setLightboxOpen(false);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [entryAsLightbox, loadError]);
+
+  const handleLightboxRequestClose = useCallback(() => {
+    if (entryAsLightbox && !sheetRevealed) {
+      onClose();
+      return;
+    }
+    setLightboxOpen(false);
+  }, [entryAsLightbox, sheetRevealed, onClose]);
 
   useEffect(() => {
     recoveryFiredRef.current = null;
@@ -284,28 +328,6 @@ export function ProfilePostDetailSheet({
     });
   }
 
-  function handleGenerateCaption() {
-    if (!post?.meme_image_url) return;
-    startGenerateCaptionTransition(async () => {
-      try {
-        const res = await fetch("/api/meme/generate-caption", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ postId: post.id }),
-        });
-        const data = (await res.json()) as { caption?: string; error?: string };
-        if (!res.ok || data.error) {
-          toast.error(data.error ?? "Caption-Generierung fehlgeschlagen");
-          return;
-        }
-        setCaptionDraft(data.caption ?? "");
-        setShowCaptionEdit(true);
-      } catch {
-        toast.error("Caption-Generierung fehlgeschlagen");
-      }
-    });
-  }
-
   function handleSaveCaption() {
     if (!post) return;
     startSaveCaptionTransition(async () => {
@@ -349,6 +371,8 @@ export function ProfilePostDetailSheet({
 
   if (!postId) return null;
 
+  const showFullSheet = !entryAsLightbox || sheetRevealed;
+
   /** Post-Autor kann Caption bearbeiten (Server prüft beim Speichern erneut). */
   const isPostAuthor =
     post !== null && String(post.user_id) === String(currentUserId);
@@ -365,6 +389,8 @@ export function ProfilePostDetailSheet({
     : "";
 
   const isOwnerOfPipelinePost = Boolean(isPostAuthor && post);
+  const canMoveMeme =
+    Boolean(post?.meme_image_url) && (isPostAuthor || isAdmin);
   const pipelineStaleMs = 3 * 60 * 1000;
   const pipelineUpdatedMs = jobPollDetail?.jobUpdatedAt
     ? new Date(jobPollDetail.jobUpdatedAt).getTime()
@@ -375,66 +401,83 @@ export function ProfilePostDetailSheet({
     (jobPollDetail?.status === "pending" ||
       jobPollDetail?.status === "processing");
 
-  /** Wie Feed-Card: Kommentar, Like, Geliked, Teilen rechts — für Sheet und Lightbox */
+  /** Wie Feed-Card: Kommentar, Like, Bewertung, Teilen — Liker-Liste über Avatare auf dem Bild */
   const postSocialActionsEl =
     !isLoadingDetail && post ? (
-      <div className="mx-auto flex w-full max-w-lg items-center gap-1">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+      <div className="mx-auto flex w-full max-w-lg items-center gap-1.5 px-1">
+        <div className="flex shrink-0 items-center gap-0">
           <button
             type="button"
             onClick={scrollToCommentsAndFocusComposer}
             aria-label="Kommentar schreiben"
-            className="flex h-10 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800/80 hover:text-zinc-100"
+            className="flex h-10 items-center gap-1.5 rounded-full px-2.5 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800/80 hover:text-zinc-100 sm:px-3"
           >
             <MessageCircle className="h-5 w-5" />
             <span>{commentCount}</span>
           </button>
 
-          <div className="flex items-center gap-0">
-            <button
-              type="button"
-              onClick={handleLike}
-              disabled={isLiking}
-              aria-label={optimisticLike.liked ? "Like entfernen" : "Liken"}
-              className={`flex h-10 items-center gap-1.5 rounded-full text-sm font-medium transition-colors hover:bg-zinc-800/80 disabled:cursor-not-allowed ${
-                optimisticLike.count > 0 ? "pl-3 pr-0.5" : "px-3"
+          <button
+            type="button"
+            onClick={handleLike}
+            disabled={isLiking}
+            aria-label={optimisticLike.liked ? "Like entfernen" : "Liken"}
+            className="flex h-10 items-center gap-1.5 rounded-full px-2.5 text-sm font-medium transition-colors hover:bg-zinc-800/80 disabled:cursor-not-allowed sm:px-3"
+          >
+            <Heart
+              className={`h-5 w-5 transition-colors ${
+                optimisticLike.liked
+                  ? "fill-orange-500 text-orange-500"
+                  : "text-zinc-400"
               }`}
+            />
+            <span
+              className={
+                optimisticLike.liked ? "text-orange-400" : "text-zinc-400"
+              }
             >
-              <Heart
-                className={`h-5 w-5 transition-colors ${
-                  optimisticLike.liked
-                    ? "fill-orange-500 text-orange-500"
-                    : "text-zinc-400"
-                }`}
-              />
-              <span
-                className={
-                  optimisticLike.liked ? "text-orange-400" : "text-zinc-400"
-                }
-              >
-                {optimisticLike.count}
-              </span>
-            </button>
-
-            {optimisticLike.count > 0 && (
-              <button
-                type="button"
-                onClick={() => setLikersOpen(true)}
-                aria-haspopup="dialog"
-                className="flex h-10 items-center rounded-full pl-0.5 pr-3 text-sm font-medium text-zinc-400 underline-offset-2 transition-colors hover:bg-zinc-800/80 hover:text-zinc-100"
-              >
-                Geliked
-              </button>
-            )}
-          </div>
+              {optimisticLike.count}
+            </span>
+          </button>
         </div>
+
+        {post.meme_image_url ? (
+          <div
+            className="flex min-w-0 flex-1 justify-center px-0.5"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <PostStarRating
+              postId={post.id}
+              starRatingAvg={post.star_rating_avg}
+              starRatingCount={post.star_rating_count}
+              myStarRating={post.my_star_rating}
+              interactive
+              compact
+              className="justify-center"
+              onUpdated={(v: PostStarRatingSnapshot) =>
+                setPost((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        star_rating_avg: v.star_rating_avg,
+                        star_rating_count: v.star_rating_count,
+                        my_star_rating: v.my_star_rating,
+                      }
+                    : prev,
+                )
+              }
+            />
+          </div>
+        ) : (
+          <div className="min-w-0 flex-1" aria-hidden />
+        )}
 
         <button
           type="button"
           onClick={handleShareMeme}
           disabled={isSharing || !post.signed_url}
           aria-label="Meme teilen"
-          className="flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800/80 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-10 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800/80 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3"
         >
           {isSharing ? (
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -457,21 +500,67 @@ export function ProfilePostDetailSheet({
 
       <MemeImageLightbox
         open={lightboxOpen}
-        onClose={() => setLightboxOpen(false)}
+        onClose={handleLightboxRequestClose}
         memeSrc={post?.signed_url ?? fallbackImageSrc}
         originalSrc={post?.original_signed_url ?? null}
-        footer={postSocialActionsEl ?? undefined}
+        historySync={!entryAsLightbox || sheetRevealed}
+        footer={
+          postSocialActionsEl || (entryAsLightbox && post) ? (
+            <>
+              {entryAsLightbox && !isLoadingDetail && canMoveMeme && post ? (
+                <div className="flex justify-start border-b border-zinc-800/80 px-2 pb-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setMoveDialogOpen(true)}
+                    aria-label="In anderes Projekt verschieben"
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-orange-400"
+                  >
+                    <FolderInput className="h-5 w-5" />
+                  </button>
+                </div>
+              ) : null}
+              {postSocialActionsEl}
+              {entryAsLightbox && post ? (
+                <div className="flex justify-center border-t border-zinc-800/80 px-2 pb-1 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSheetRevealed(true);
+                      setLightboxOpen(false);
+                    }}
+                    className="text-xs font-medium text-zinc-400 underline-offset-2 hover:text-orange-400 hover:underline"
+                  >
+                    Alle Details & Kommentare
+                  </button>
+                </div>
+              ) : null}
+            </>
+          ) : undefined
+        }
       />
 
-      <div
-        className="fixed inset-0 z-[30] bg-black/70 backdrop-blur-sm"
-        onClick={handleBackdropClose}
-      />
+      {showFullSheet ? (
+        <>
+          <div
+            className="fixed inset-0 z-[30] bg-black/70 backdrop-blur-sm"
+            onClick={handleBackdropClose}
+          />
 
-      <div className="fixed inset-0 z-[35] flex flex-col overflow-hidden">
+          <div className="fixed inset-0 z-[35] flex flex-col overflow-hidden">
         <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-2 border-b border-zinc-800 bg-zinc-900/95 px-2 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-          <div className="flex w-10 shrink-0 justify-center" aria-hidden>
-            <span className="inline-block w-10" />
+          <div className="flex w-10 shrink-0 justify-center">
+            {!isLoadingDetail && canMoveMeme && post ? (
+              <button
+                type="button"
+                onClick={() => setMoveDialogOpen(true)}
+                aria-label="In anderes Projekt verschieben"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-orange-400"
+              >
+                <FolderInput className="h-5 w-5" />
+              </button>
+            ) : (
+              <span className="inline-block w-10" aria-hidden />
+            )}
           </div>
           <div className="flex min-w-0 justify-center px-2 text-center">
             {post ? (
@@ -607,7 +696,7 @@ export function ProfilePostDetailSheet({
 
               {!isLoadingDetail && post && (
                 <>
-                  <div className="border-b border-zinc-800 px-3 pt-2">
+                  <div className="border-b border-zinc-800 px-2 pt-2 sm:px-3">
                     {postSocialActionsEl}
                   </div>
 
@@ -675,21 +764,6 @@ export function ProfilePostDetailSheet({
                                 ? "Caption bearbeiten"
                                 : "Caption hinzufügen"}
                             </button>
-                            <button
-                              type="button"
-                              onClick={handleGenerateCaption}
-                              disabled={
-                                isGeneratingCaption || !post.meme_image_url
-                              }
-                              className="flex items-center gap-1.5 rounded-full border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:border-orange-500 hover:text-orange-400 disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              {isGeneratingCaption ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Sparkles className="h-3.5 w-3.5" />
-                              )}
-                              KI-Caption
-                            </button>
                           </div>
                         )}
                       </div>
@@ -710,7 +784,19 @@ export function ProfilePostDetailSheet({
             </>
           )}
         </div>
-      </div>
+          </div>
+        </>
+      ) : null}
+
+      {post && (
+        <MovePostProjectDialog
+          open={moveDialogOpen}
+          onOpenChange={setMoveDialogOpen}
+          postId={post.id}
+          currentProjectId={post.project_id}
+          onMoved={() => onPostMoved?.()}
+        />
+      )}
     </>
   );
 }

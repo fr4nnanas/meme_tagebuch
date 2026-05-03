@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import {
   Check,
+  FolderInput,
   Heart,
   Loader2,
   MessageCircle,
   MoreVertical,
   Share2,
-  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -29,6 +29,11 @@ import { shareMemeFromPost } from "@/lib/share/web-share";
 import { CommentThread } from "./comment-thread";
 import { PostLikersOverlay } from "./post-likers-overlay";
 import { PostRecentLikersOnImage } from "./post-recent-likers-on-image";
+import {
+  PostStarRating,
+  type PostStarRatingSnapshot,
+} from "@/components/shared/post-star-rating";
+import { MovePostProjectDialog } from "./move-post-project-dialog";
 
 interface FeedCardProps {
   post: PostWithDetails;
@@ -36,9 +41,12 @@ interface FeedCardProps {
   isAdmin?: boolean;
   onDeleted: (postId: string) => void;
   onCaptionUpdated: (postId: string, caption: string) => void;
+  onStarRatingUpdated?: (postId: string, snapshot: PostStarRatingSnapshot) => void;
   onCommentCountChange: (postId: string, delta: number) => void;
   /** Wird aufgerufen, sobald der Nutzer den Post im Feed sichtbar „gesehen“ hat. */
   onMarkedViewed?: (postId: string) => void;
+  /** Post wurde in ein anderes Projekt verschoben (nicht mehr im aktuellen Feed). */
+  onPostMovedAway?: (postId: string) => void;
 }
 
 interface LikeState {
@@ -52,11 +60,14 @@ export function FeedCard({
   isAdmin = false,
   onDeleted,
   onCaptionUpdated,
+  onStarRatingUpdated,
   onCommentCountChange,
   onMarkedViewed,
+  onPostMovedAway,
 }: FeedCardProps) {
   const isOwner = post.user_id === currentUserId;
   const canDelete = isOwner || isAdmin;
+  const canMoveMeme = Boolean(post.meme_image_url) && (isOwner || isAdmin);
 
   const [likeState, setLikeState] = useState<LikeState>({
     liked: post.liked_by_me,
@@ -68,10 +79,10 @@ export function FeedCard({
   );
 
   const [showMenu, setShowMenu] = useState(false);
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [showCaptionEdit, setShowCaptionEdit] = useState(false);
   const [captionDraft, setCaptionDraft] = useState(post.caption ?? "");
   const [currentCaption, setCurrentCaption] = useState(post.caption);
-  const [isGeneratingCaption, startGenerateCaptionTransition] = useTransition();
   const [isSavingCaption, startSaveCaptionTransition] = useTransition();
   const [isDeletingPost, startDeleteTransition] = useTransition();
   const [isLiking, startLikeTransition] = useTransition();
@@ -154,28 +165,6 @@ export function FeedCard({
       }
       toast.success("Post gelöscht.");
       onDeleted(post.id);
-    });
-  }
-
-  function handleGenerateCaption() {
-    if (!post.meme_image_url) return;
-    startGenerateCaptionTransition(async () => {
-      try {
-        const res = await fetch("/api/meme/generate-caption", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ postId: post.id }),
-        });
-        const data = (await res.json()) as { caption?: string; error?: string };
-        if (!res.ok || data.error) {
-          toast.error(data.error ?? "Caption-Generierung fehlgeschlagen");
-          return;
-        }
-        setCaptionDraft(data.caption ?? "");
-        setShowCaptionEdit(true);
-      } catch {
-        toast.error("Caption-Generierung fehlgeschlagen");
-      }
     });
   }
 
@@ -268,11 +257,24 @@ export function FeedCard({
                     className="fixed inset-0 z-10"
                     onClick={() => setShowMenu(false)}
                   />
-                  <div className="absolute right-0 top-10 z-20 min-w-[160px] overflow-hidden rounded-xl border border-zinc-800 bg-zinc-800 shadow-2xl">
+                  <div className="absolute right-0 top-10 z-20 min-w-[180px] overflow-hidden rounded-xl border border-zinc-800 bg-zinc-800 shadow-2xl">
                     {isAdmin && !isOwner && (
                       <p className="border-b border-zinc-800 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-orange-400">
                         Admin-Aktion
                       </p>
+                    )}
+                    {canMoveMeme && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowMenu(false);
+                          setMoveDialogOpen(true);
+                        }}
+                        className="flex w-full items-center gap-3 border-b border-zinc-800 px-4 py-3 text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
+                      >
+                        <FolderInput className="h-4 w-4 shrink-0 text-orange-400" />
+                        In anderes Projekt …
+                      </button>
                     )}
                     <button
                       type="button"
@@ -318,64 +320,70 @@ export function FeedCard({
 
         <MemePromptDisclosure pipelineInputText={post.pipeline_input_text} />
 
-        {/* Actions: Kommentar, Like, Geliked, Teilen (rechts) */}
-        <div className="flex items-center gap-1 px-3 pt-2">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+        {/* Kommentar, Like, Bewertung, Teilen — Liker-Liste über Avatare auf dem Bild */}
+        <div className="flex items-center gap-1.5 border-b border-zinc-800/80 px-2 pt-2 sm:px-3">
+          <div className="flex shrink-0 items-center gap-0">
             <button
               type="button"
               onClick={scrollToCommentsAndFocusComposer}
               aria-label="Kommentar schreiben"
-              className="flex h-10 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+              className="flex h-10 items-center gap-1.5 rounded-full px-2.5 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 sm:px-3"
             >
               <MessageCircle className="h-5 w-5" />
               <span>{post.comment_count}</span>
             </button>
 
-            <div className="flex items-center gap-0">
-              <button
-                type="button"
-                onClick={handleLike}
-                disabled={isLiking}
-                aria-label={optimisticLike.liked ? "Like entfernen" : "Liken"}
-                className={`flex h-10 items-center gap-1.5 rounded-full text-sm font-medium transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed ${
-                  optimisticLike.count > 0 ? "pl-3 pr-0.5" : "px-3"
+            <button
+              type="button"
+              onClick={handleLike}
+              disabled={isLiking}
+              aria-label={optimisticLike.liked ? "Like entfernen" : "Liken"}
+              className="flex h-10 items-center gap-1.5 rounded-full px-2.5 text-sm font-medium transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed sm:px-3"
+            >
+              <Heart
+                className={`h-5 w-5 transition-colors ${
+                  optimisticLike.liked
+                    ? "fill-orange-500 text-orange-500"
+                    : "text-zinc-400"
                 }`}
+              />
+              <span
+                className={
+                  optimisticLike.liked ? "text-orange-400" : "text-zinc-400"
+                }
               >
-                <Heart
-                  className={`h-5 w-5 transition-colors ${
-                    optimisticLike.liked
-                      ? "fill-orange-500 text-orange-500"
-                      : "text-zinc-400"
-                  }`}
-                />
-                <span
-                  className={
-                    optimisticLike.liked ? "text-orange-400" : "text-zinc-400"
-                  }
-                >
-                  {optimisticLike.count}
-                </span>
-              </button>
-
-              {optimisticLike.count > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setLikersOpen(true)}
-                  aria-haspopup="dialog"
-                  className="flex h-10 items-center rounded-full pl-0.5 pr-3 text-sm font-medium text-zinc-400 underline-offset-2 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-                >
-                  Geliked
-                </button>
-              )}
-            </div>
+                {optimisticLike.count}
+              </span>
+            </button>
           </div>
+
+          {post.meme_image_url ? (
+            <div
+              className="flex min-w-0 flex-1 justify-center px-0.5"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <PostStarRating
+                postId={post.id}
+                starRatingAvg={post.star_rating_avg}
+                starRatingCount={post.star_rating_count}
+                myStarRating={post.my_star_rating}
+                interactive
+                compact
+                className="justify-center"
+                onUpdated={(snap) => onStarRatingUpdated?.(post.id, snap)}
+              />
+            </div>
+          ) : (
+            <div className="min-w-0 flex-1" aria-hidden />
+          )}
 
           <button
             type="button"
             onClick={handleShareMeme}
             disabled={isSharing || !post.signed_url}
             aria-label="Meme teilen"
-            className="flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-10 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3"
           >
             {isSharing ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -440,22 +448,6 @@ export function FeedCard({
             </div>
           )}
 
-          {/* KI-Caption-Button – nur für Owner sichtbar, nicht für Admin bei fremden Posts */}
-          {isOwner && !showCaptionEdit && (
-            <button
-              type="button"
-              onClick={handleGenerateCaption}
-              disabled={isGeneratingCaption || !post.meme_image_url}
-              className="mt-2 flex h-8 items-center gap-1.5 rounded-full border border-zinc-700 px-3 text-xs font-medium text-zinc-400 transition-colors hover:border-orange-500 hover:text-orange-400 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {isGeneratingCaption ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="h-3.5 w-3.5" />
-              )}
-              KI-Caption generieren
-            </button>
-          )}
         </div>
 
         <div className="px-4 pb-3">
@@ -473,6 +465,14 @@ export function FeedCard({
         postId={post.id}
         open={likersOpen}
         onOpenChange={setLikersOpen}
+      />
+
+      <MovePostProjectDialog
+        open={moveDialogOpen}
+        onOpenChange={setMoveDialogOpen}
+        postId={post.id}
+        currentProjectId={post.project_id}
+        onMoved={() => onPostMovedAway?.(post.id)}
       />
     </>
   );

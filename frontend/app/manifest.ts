@@ -3,6 +3,7 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
+    lang: "de",
     name: "Meme-Tagebuch",
     short_name: "Meme-Tagebuch",
     description: "Memes aus Fotos erstellen, mit Freunden im Feed teilen.",
@@ -12,6 +13,7 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#18181b",
     theme_color: "#ea580c",
     orientation: "portrait-primary",
+    categories: ["social", "entertainment", "photo"],
     icons: [
       {
         src: "/icons/icon-192.png",
@@ -26,7 +28,7 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: "any",
       },
       {
-        src: "/icons/icon-512.png",
+        src: "/icons/icon-maskable-512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",

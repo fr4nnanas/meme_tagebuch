@@ -119,7 +119,11 @@ export function MembersExplorer() {
                   <p className="truncate font-medium text-zinc-100">
                     {m.username}
                   </p>
-                  <p className="text-xs text-zinc-500">Profil anzeigen</p>
+                  <p className="text-xs text-zinc-500">
+                    {m.meme_count_in_project}{" "}
+                    {m.meme_count_in_project === 1 ? "Meme" : "Memes"} in diesem
+                    Projekt · Profil anzeigen
+                  </p>
                 </div>
               </Link>
             </li>

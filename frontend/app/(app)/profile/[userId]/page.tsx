@@ -28,11 +28,20 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
     notFound();
   }
 
+  const { data: viewer } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const viewerIsAdmin = viewer?.role === "admin";
+
   return (
     <ProfileView
       profile={profile}
       isOwner={user.id === profile.id}
       currentUserId={user.id}
+      viewerIsAdmin={viewerIsAdmin}
     />
   );
 }

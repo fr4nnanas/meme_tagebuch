@@ -12,75 +12,159 @@ const DAILY_AI_IMAGE_SETTING_KEY = "daily_ai_image_limit";
 
 type ServerSupabase = Awaited<ReturnType<typeof createClient>>;
 
-/** Gleiche Quellen wie Enforcement in startMemeJob / requestSecondAiMemeVariant. */
-async function readDailyAiImageQuota(
+type DailyAiQuotaState = {
+  today: string;
+  globalLimit: number;
+  globalUsed: number;
+  globalRow: { ai_images_used: number } | null;
+  projectLimit: number;
+  projectUsed: number;
+  projectRow: { ai_images_used: number } | null;
+};
+
+/** Globales + projektbezogenes Tages-KI-Kontingent (Typ A). */
+async function readDailyAiQuotaState(
   supabase: ServerSupabase,
   userId: string,
-): Promise<{
-  dailyLimit: number;
-  used: number;
-  today: string;
-  usage: { ai_images_used: number } | null;
-}> {
-  const { data: settings } = await supabase
+  projectId: string,
+): Promise<DailyAiQuotaState> {
+  const today = new Date().toISOString().split("T")[0];
+
+  const { data: settingsRows } = await supabase
     .from("settings")
-    .select("value")
+    .select("key, value")
     .eq("key", DAILY_AI_IMAGE_SETTING_KEY)
     .maybeSingle();
 
-  const dailyLimit = parseInt(settings?.value ?? "5", 10);
+  const globalLimit = parseInt(settingsRows?.value ?? "5", 10);
 
-  const today = new Date().toISOString().split("T")[0];
-  const { data: usage } = await supabase
+  let projectLimit = 5;
+  const { data: projLimitRow, error: projLimitErr } = await supabase
+    .from("projects")
+    .select("daily_ai_generated_limit")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  if (!projLimitErr && projLimitRow) {
+    const raw = (projLimitRow as { daily_ai_generated_limit?: number })
+      .daily_ai_generated_limit;
+    if (typeof raw === "number" && raw >= 1 && raw <= 100) {
+      projectLimit = raw;
+    }
+  }
+
+  const { data: globalUsage } = await supabase
     .from("daily_usage")
     .select("ai_images_used")
     .eq("user_id", userId)
     .eq("date", today)
     .maybeSingle();
 
-  const used = usage?.ai_images_used ?? 0;
+  const globalUsed = globalUsage?.ai_images_used ?? 0;
+
+  let projectUsed = 0;
+  let projectRow: { ai_images_used: number } | null = null;
+  const { data: projUsage, error: projErr } = await supabase
+    .from("daily_usage_project")
+    .select("ai_images_used")
+    .eq("user_id", userId)
+    .eq("project_id", projectId)
+    .eq("date", today)
+    .maybeSingle();
+
+  if (!projErr && projUsage) {
+    projectUsed = projUsage.ai_images_used;
+    projectRow = projUsage;
+  }
 
   return {
-    dailyLimit,
-    used,
     today,
-    usage: usage ?? null,
+    globalLimit,
+    globalUsed,
+    globalRow: globalUsage ?? null,
+    projectLimit,
+    projectUsed,
+    projectRow,
   };
+}
+
+function effectiveAiRemaining(st: DailyAiQuotaState): number {
+  const g = st.globalLimit - st.globalUsed;
+  const p = st.projectLimit - st.projectUsed;
+  return Math.min(g, p);
+}
+
+function quotaExceededMessage(st: DailyAiQuotaState): string {
+  const gRem = st.globalLimit - st.globalUsed;
+  const pRem = st.projectLimit - st.projectUsed;
+  if (gRem <= 0 && pRem <= 0) {
+    return `Tageslimit erreicht – global (${st.globalUsed}/${st.globalLimit}) und in diesem Projekt (${st.projectUsed}/${st.projectLimit}) sind alle KI-Bilder für heute verbraucht.`;
+  }
+  if (gRem <= 0) {
+    return `Globales Tageslimit erreicht – ${st.globalUsed}/${st.globalLimit} KI-Generierungen für heute.`;
+  }
+  return `Projekt-Tageslimit erreicht – in diesem Projekt heute ${st.projectUsed}/${st.projectLimit} KI-Bilder verbraucht (global wären noch welche frei).`;
+}
+
+async function persistAiQuotaIncrement(
+  supabase: ServerSupabase,
+  userId: string,
+  projectId: string,
+  st: DailyAiQuotaState,
+): Promise<void> {
+  if (st.globalRow) {
+    await supabase
+      .from("daily_usage")
+      .update({ ai_images_used: st.globalUsed + 1 })
+      .eq("user_id", userId)
+      .eq("date", st.today);
+  } else {
+    await supabase
+      .from("daily_usage")
+      .insert({ user_id: userId, date: st.today, ai_images_used: 1 });
+  }
+
+  if (st.projectRow) {
+    await supabase
+      .from("daily_usage_project")
+      .update({ ai_images_used: st.projectUsed + 1 })
+      .eq("user_id", userId)
+      .eq("project_id", projectId)
+      .eq("date", st.today);
+  } else {
+    await supabase.from("daily_usage_project").insert({
+      user_id: userId,
+      project_id: projectId,
+      date: st.today,
+      ai_images_used: 1,
+    });
+  }
 }
 
 async function tryConsumeAiQuota(
   supabase: ServerSupabase,
   userId: string,
+  projectId: string,
 ): Promise<{ error?: string }> {
-  const { dailyLimit, used, today, usage } = await readDailyAiImageQuota(
-    supabase,
-    userId,
-  );
+  const st = await readDailyAiQuotaState(supabase, userId, projectId);
 
-  if (used >= dailyLimit) {
-    return {
-      error: `Tageslimit erreicht – heute noch ${dailyLimit} KI-Generierungen möglich. Du hast alle ${dailyLimit} aufgebraucht.`,
-    };
+  if (effectiveAiRemaining(st) <= 0) {
+    return { error: quotaExceededMessage(st) };
   }
 
-  if (usage) {
-    await supabase
-      .from("daily_usage")
-      .update({ ai_images_used: used + 1 })
-      .eq("user_id", userId)
-      .eq("date", today);
-  } else {
-    await supabase
-      .from("daily_usage")
-      .insert({ user_id: userId, date: today, ai_images_used: 1 });
-  }
-
+  await persistAiQuotaIncrement(supabase, userId, projectId, st);
   return {};
 }
 
-/** Für UI (Upload): aktuelles Tages-KI-Kontingent wie in den Server-Checks. */
-export async function getDailyAiQuota(): Promise<
-  | { limit: number; used: number }
+/** Für UI (Upload): Kontingent wie bei den Server-Checks (global + aktuelles Projekt). */
+export async function getDailyAiQuota(projectId: string): Promise<
+  | {
+      globalLimit: number;
+      globalUsed: number;
+      projectLimit: number;
+      projectUsed: number;
+      remainingEffective: number;
+    }
   | { error: string }
 > {
   const supabase = await createClient();
@@ -89,8 +173,14 @@ export async function getDailyAiQuota(): Promise<
   } = await supabase.auth.getUser();
   if (!user) return { error: "Nicht angemeldet" };
 
-  const { dailyLimit, used } = await readDailyAiImageQuota(supabase, user.id);
-  return { limit: dailyLimit, used };
+  const st = await readDailyAiQuotaState(supabase, user.id, projectId);
+  return {
+    globalLimit: st.globalLimit,
+    globalUsed: st.globalUsed,
+    projectLimit: st.projectLimit,
+    projectUsed: st.projectUsed,
+    remainingEffective: Math.max(0, effectiveAiRemaining(st)),
+  };
 }
 
 interface StartJobResult {
@@ -131,6 +221,7 @@ export async function startMemeJob(
   const projectId = formData.get("projectId") as string | null;
   const userText = formData.get("userText") as string | null;
   const aiMasterStyleRaw = formData.get("aiMasterStyle") as string | null;
+  const aiExperimentalMinimalRaw = formData.get("aiExperimentalMinimal") as string | null;
   const latRaw = formData.get("lat") as string | null;
   const lngRaw = formData.get("lng") as string | null;
 
@@ -148,9 +239,13 @@ export async function startMemeJob(
   const pipelineInputText =
     userText && String(userText).trim() ? String(userText).trim() : null;
 
-  // Tageslimit für Typ A prüfen und vorab erhöhen
+  const aiExperimentalMinimal =
+    memeType === "ai_generated" &&
+    (aiExperimentalMinimalRaw === "1" || aiExperimentalMinimalRaw === "true");
+
+  // Tageslimit für Typ A prüfen und vorab erhöhen (global + projekt)
   if (memeType === "ai_generated") {
-    const quota = await tryConsumeAiQuota(supabase, user.id);
+    const quota = await tryConsumeAiQuota(supabase, user.id, projectId);
     if (quota.error) return { error: quota.error };
   }
 
@@ -193,6 +288,7 @@ export async function startMemeJob(
       pipeline,
       pipeline_input_text: pipelineInputText,
       caption: null,
+      ai_experimental_minimal: aiExperimentalMinimal,
       lat: lat && !isNaN(lat) ? lat : null,
       lng: lng && !isNaN(lng) ? lng : null,
     })
@@ -236,6 +332,7 @@ export async function startMemeJob(
         memeType === "ai_generated" && aiMasterStyleTrimmed
           ? aiMasterStyleTrimmed
           : undefined,
+      aiExperimentalMinimal: aiExperimentalMinimal || undefined,
     });
   });
 
@@ -331,6 +428,7 @@ export async function retryMemeJobFromDraftAction(
   const projectId = formData.get("projectId") as string | null;
   const userText = formData.get("userText") as string | null;
   const aiMasterStyleRaw = formData.get("aiMasterStyle") as string | null;
+  const aiExperimentalMinimalRaw = formData.get("aiExperimentalMinimal") as string | null;
   const latRaw = formData.get("lat") as string | null;
   const lngRaw = formData.get("lng") as string | null;
 
@@ -352,6 +450,10 @@ export async function retryMemeJobFromDraftAction(
   const lng = lngRaw ? parseFloat(lngRaw) : null;
   const pipelineInputText =
     userText && String(userText).trim() ? String(userText).trim() : null;
+
+  const aiExperimentalMinimal =
+    memeType === "ai_generated" &&
+    (aiExperimentalMinimalRaw === "1" || aiExperimentalMinimalRaw === "true");
 
   const { data: postRow, error: postFetchError } = await supabase
     .from("posts")
@@ -379,7 +481,7 @@ export async function retryMemeJobFromDraftAction(
     memeType === "ai_generated" && previousMemeType !== "ai_generated";
 
   if (needNewAiQuota) {
-    const quota = await tryConsumeAiQuota(supabase, user.id);
+    const quota = await tryConsumeAiQuota(supabase, user.id, projectId);
     if (quota.error) return { error: quota.error };
   }
 
@@ -404,6 +506,7 @@ export async function retryMemeJobFromDraftAction(
       meme_type: memeType,
       pipeline,
       pipeline_input_text: pipelineInputText,
+      ai_experimental_minimal: aiExperimentalMinimal,
       lat: lat && !isNaN(lat) ? lat : null,
       lng: lng && !isNaN(lng) ? lng : null,
     })
@@ -485,6 +588,7 @@ export async function retryMemeJobFromDraftAction(
         memeType === "ai_generated" && aiMasterStyleTrimmed
           ? aiMasterStyleTrimmed
           : undefined,
+      aiExperimentalMinimal: aiExperimentalMinimal || undefined,
     });
   });
 
@@ -527,15 +631,31 @@ export async function requestSecondAiMemeVariant(
     };
   }
 
-  const { dailyLimit, used, today, usage } = await readDailyAiImageQuota(
-    supabase,
-    user.id,
-  );
+  const { data: jobPost } = await supabase
+    .from("jobs")
+    .select("post_id")
+    .eq("id", jobId)
+    .eq("user_id", user.id)
+    .maybeSingle();
 
-  if (used >= dailyLimit) {
-    return {
-      error: `Tageslimit erreicht – heute noch maximal ${dailyLimit} KI-Bilder.`,
-    };
+  if (!jobPost?.post_id) {
+    return { error: "Job ohne Post" };
+  }
+
+  const { data: postForQuota } = await supabase
+    .from("posts")
+    .select("project_id")
+    .eq("id", jobPost.post_id)
+    .maybeSingle();
+
+  const quotaProjectId = postForQuota?.project_id;
+  if (!quotaProjectId) {
+    return { error: "Post nicht gefunden" };
+  }
+
+  const st = await readDailyAiQuotaState(supabase, user.id, quotaProjectId);
+  if (effectiveAiRemaining(st) <= 0) {
+    return { error: quotaExceededMessage(st) };
   }
 
   try {
@@ -546,17 +666,7 @@ export async function requestSecondAiMemeVariant(
     return { error: message };
   }
 
-  if (usage) {
-    await supabase
-      .from("daily_usage")
-      .update({ ai_images_used: used + 1 })
-      .eq("user_id", user.id)
-      .eq("date", today);
-  } else {
-    await supabase
-      .from("daily_usage")
-      .insert({ user_id: user.id, date: today, ai_images_used: used + 1 });
-  }
+  await persistAiQuotaIncrement(supabase, user.id, quotaProjectId, st);
 
   return {};
 }
@@ -669,29 +779,4 @@ export async function discardUnpublishedMeme(
   }
 
   return {};
-}
-
-export async function generateCaption(
-  postId: string,
-  memeImagePath: string,
-): Promise<{ caption?: string; error?: string }> {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Nicht angemeldet" };
-
-  const response = await fetch(`/api/meme/generate-caption`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ postId, memeImagePath }),
-  });
-
-  if (!response.ok) {
-    return { error: "Caption-Generierung fehlgeschlagen" };
-  }
-
-  const data = (await response.json()) as { caption?: string; error?: string };
-  return data;
 }

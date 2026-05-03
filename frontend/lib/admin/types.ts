@@ -3,6 +3,8 @@ export type ProjectWithMembers = {
   name: string;
   description: string | null;
   ai_prompt_context: string | null;
+  /** KI-Vollbild (Typ A): max. pro Nutzer und Tag in diesem Projekt */
+  daily_ai_generated_limit: number;
   created_at: string;
   project_members: { user_id: string }[];
 };

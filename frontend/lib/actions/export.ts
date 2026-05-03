@@ -1,6 +1,12 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import {
+  sortPostsForDisplay,
+  type MemeStarSortMode,
+} from "@/lib/meme/sort-posts";
+
+export type { MemeStarSortMode } from "@/lib/meme/sort-posts";
 
 const EXPORT_POST_PAGE = 500;
 const IN_CHUNK = 150;
@@ -24,6 +30,8 @@ export interface ExportPayloadPost {
   id: string;
   created_at: string;
   caption: string | null;
+  star_rating_avg: number | null;
+  star_rating_count: number;
   meme_type: string;
   pipeline: string;
   pipeline_input_text: string | null;
@@ -64,6 +72,7 @@ function readUser(joined: unknown): ExportPayloadUser {
 
 export async function fetchProjectExportDataAction(
   projectId: string,
+  sort: MemeStarSortMode = "created_desc",
 ): Promise<{ payload?: ProjectExportPayload; error?: string }> {
   try {
     const supabase = await createClient();
@@ -81,9 +90,11 @@ export async function fetchProjectExportDataAction(
     if (projectError) return { error: projectError.message };
     if (!projectRow) return { error: "Projekt nicht gefunden" };
 
-    const allPosts: {
+    type ExportPostRow = {
       id: string;
       caption: string | null;
+      star_rating_avg: number | string | null;
+      star_rating_count: number | string | null;
       meme_image_url: string;
       meme_type: string;
       pipeline: string;
@@ -91,7 +102,9 @@ export async function fetchProjectExportDataAction(
       original_image_url: string;
       created_at: string;
       users: unknown;
-    }[] = [];
+    };
+
+    const allPosts: ExportPostRow[] = [];
 
     for (let page = 0; ; page++) {
       const from = page * EXPORT_POST_PAGE;
@@ -99,7 +112,7 @@ export async function fetchProjectExportDataAction(
       const { data: batch, error: postsError } = await supabase
         .from("posts")
         .select(
-          "id, caption, meme_image_url, meme_type, pipeline, pipeline_input_text, original_image_url, created_at, users!user_id(id, username, avatar_url)",
+          "id, caption, star_rating_avg, star_rating_count, meme_image_url, meme_type, pipeline, pipeline_input_text, original_image_url, created_at, users!user_id(id, username, avatar_url)",
         )
         .eq("project_id", projectId)
         .not("meme_image_url", "is", null)
@@ -108,7 +121,7 @@ export async function fetchProjectExportDataAction(
 
       if (postsError) return { error: postsError.message };
       if (!batch?.length) break;
-      allPosts.push(...batch);
+      allPosts.push(...(batch as ExportPostRow[]));
       if (batch.length < EXPORT_POST_PAGE) break;
     }
 
@@ -186,10 +199,15 @@ export async function fetchProjectExportDataAction(
       }
     }
 
-    const posts: ExportPayloadPost[] = allPosts.map((p) => ({
+    const postsMapped: ExportPayloadPost[] = allPosts.map((p) => ({
       id: p.id,
       created_at: p.created_at,
       caption: p.caption,
+      star_rating_avg:
+        p.star_rating_avg != null && p.star_rating_avg !== ""
+          ? Number(p.star_rating_avg)
+          : null,
+      star_rating_count: Number(p.star_rating_count ?? 0),
       meme_type: p.meme_type,
       pipeline: p.pipeline,
       pipeline_input_text: p.pipeline_input_text,
@@ -199,6 +217,8 @@ export async function fetchProjectExportDataAction(
       like_count: postLikeCount.get(p.id) ?? 0,
       comments: commentsByPost.get(p.id) ?? [],
     }));
+
+    const posts = sortPostsForDisplay(postsMapped, sort);
 
     return {
       payload: {

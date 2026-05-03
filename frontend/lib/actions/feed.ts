@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { fetchMyStarRatingsForPostIds } from "@/lib/meme/fetch-my-star-ratings";
+import type { JobResult } from "@/lib/meme/process-job";
 
 const PAGE_SIZE = 10;
 
@@ -63,6 +65,11 @@ export interface PostWithDetails {
   user_id: string;
   project_id: string;
   caption: string | null;
+  /** Durchschnitt aller Sterne (2 Dezimalstellen); Anzeige: gerundete volle Sterne */
+  star_rating_avg: number | null;
+  star_rating_count: number;
+  /** Eigene Bewertung 1–5, falls abgegeben */
+  my_star_rating: number | null;
   meme_image_url: string | null;
   meme_type: string;
   pipeline: string;
@@ -113,7 +120,7 @@ export async function fetchPostsAction(
     const { data: postsRaw, error: postsError } = await supabase
       .from("posts")
       .select(
-        "id, user_id, project_id, caption, meme_image_url, original_image_url, pipeline, pipeline_input_text, meme_type, created_at, users!user_id(username, avatar_url)",
+        "id, user_id, project_id, caption, star_rating_avg, star_rating_count, meme_image_url, original_image_url, pipeline, pipeline_input_text, meme_type, created_at, users!user_id(username, avatar_url)",
       )
       .eq("project_id", projectId)
       .not("meme_image_url", "is", null)
@@ -124,6 +131,7 @@ export async function fetchPostsAction(
     if (!postsRaw || postsRaw.length === 0) return { posts: [], hasMore: false };
 
     const postIds = postsRaw.map((p) => p.id);
+    const myStars = await fetchMyStarRatingsForPostIds(supabase, user.id, postIds);
 
     const [{ data: likesRaw }, { data: commentsRaw }] = await Promise.all([
       supabase
@@ -190,11 +198,20 @@ export async function fetchPostsAction(
       const rawUser = p.users;
       const userInfo = Array.isArray(rawUser) ? rawUser[0] : rawUser;
       const origPath = p.original_image_url as string;
+      const pr = p as typeof p & {
+        star_rating_avg?: number | null;
+        star_rating_count?: number | null;
+      };
+      const cnt = Number(pr.star_rating_count ?? 0);
       return {
         id: p.id,
         user_id: p.user_id,
         project_id: p.project_id,
         caption: p.caption,
+        star_rating_avg:
+          pr.star_rating_avg != null ? Number(pr.star_rating_avg) : null,
+        star_rating_count: Number.isFinite(cnt) ? cnt : 0,
+        my_star_rating: myStars.get(p.id) ?? null,
         meme_image_url: p.meme_image_url,
         meme_type: p.meme_type,
         pipeline: p.pipeline as string,
@@ -280,6 +297,7 @@ export async function fetchUnseenPostsAction(
 
     const postIds = unseenRows.map((p) => p.id);
     const userIds = [...new Set(unseenRows.map((p) => p.user_id))];
+    const myStars = await fetchMyStarRatingsForPostIds(supabase, user.id, postIds);
 
     const [{ data: usersData }, { data: likesRaw }, { data: commentsRaw }, { data: postExtras }] =
       await Promise.all([
@@ -293,7 +311,9 @@ export async function fetchUnseenPostsAction(
         supabase.from("comments").select("post_id").in("post_id", postIds),
         supabase
           .from("posts")
-          .select("id, pipeline, pipeline_input_text, original_image_url")
+          .select(
+            "id, pipeline, pipeline_input_text, original_image_url, star_rating_avg, star_rating_count",
+          )
           .in("id", postIds),
       ]);
 
@@ -304,6 +324,8 @@ export async function fetchUnseenPostsAction(
           pipeline: string;
           pipeline_input_text: string | null;
           original_image_url: string;
+          star_rating_avg?: number | null;
+          star_rating_count?: number | null;
         };
         return [
           r.id,
@@ -311,6 +333,9 @@ export async function fetchUnseenPostsAction(
             pipeline: r.pipeline,
             pipeline_input_text: r.pipeline_input_text,
             original_image_url: r.original_image_url,
+            star_rating_avg:
+              r.star_rating_avg != null ? Number(r.star_rating_avg) : null,
+            star_rating_count: Number(r.star_rating_count ?? 0),
           },
         ] as const;
       }),
@@ -385,6 +410,9 @@ export async function fetchUnseenPostsAction(
         user_id: p.user_id,
         project_id: p.project_id,
         caption: p.caption,
+        star_rating_avg: ex?.star_rating_avg ?? null,
+        star_rating_count: ex?.star_rating_count ?? 0,
+        my_star_rating: myStars.get(p.id) ?? null,
         meme_image_url: p.meme_image_url,
         meme_type: p.meme_type,
         pipeline: ex?.pipeline ?? "direct",
@@ -480,7 +508,7 @@ export async function fetchPostDetailAction(
     const { data: p, error: postError } = await supabase
       .from("posts")
       .select(
-        "id, user_id, project_id, caption, meme_image_url, original_image_url, pipeline, pipeline_input_text, meme_type, created_at, users!user_id(username, avatar_url)",
+        "id, user_id, project_id, caption, star_rating_avg, star_rating_count, meme_image_url, original_image_url, pipeline, pipeline_input_text, meme_type, created_at, users!user_id(username, avatar_url)",
       )
       .eq("id", postId)
       .maybeSingle();
@@ -488,6 +516,8 @@ export async function fetchPostDetailAction(
     if (postError || !p) {
       return { post: null, error: postError?.message ?? "Post nicht gefunden" };
     }
+
+    const myStars = await fetchMyStarRatingsForPostIds(supabase, user.id, [postId]);
 
     const [{ data: likesRaw }, { data: commentsRaw }] = await Promise.all([
       supabase
@@ -532,13 +562,21 @@ export async function fetchPostDetailAction(
     const row = p as typeof p & {
       pipeline: string;
       pipeline_input_text: string | null;
+      star_rating_avg?: number | null;
+      star_rating_count?: number | null;
     };
+
+    const prc = Number(row.star_rating_count ?? 0);
 
     const post: PostWithDetails = {
       id: p.id,
       user_id: p.user_id,
       project_id: p.project_id,
       caption: p.caption,
+      star_rating_avg:
+        row.star_rating_avg != null ? Number(row.star_rating_avg) : null,
+      star_rating_count: Number.isFinite(prc) ? prc : 0,
+      my_star_rating: myStars.get(p.id) ?? null,
       meme_image_url: p.meme_image_url,
       meme_type: p.meme_type,
       pipeline: row.pipeline,
@@ -877,6 +915,286 @@ export async function deletePostAction(postId: string): Promise<{ error?: string
   }
 }
 
+export interface MovePostProjectOption {
+  id: string;
+  name: string;
+}
+
+/** Zielprojekte zum Verschieben: eigene Mitgliedschaften; Admin sieht alle Projekte. */
+export async function fetchDestinationProjectsForMoveAction(
+  excludeProjectId: string,
+): Promise<{ projects: MovePostProjectOption[]; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { projects: [], error: "Nicht angemeldet" };
+
+    const { data: me, error: roleErr } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (roleErr) return { projects: [], error: roleErr.message };
+
+    if (me?.role === "admin") {
+      const { data: rows, error } = await supabase
+        .from("projects")
+        .select("id, name")
+        .order("name");
+      if (error) return { projects: [], error: error.message };
+      return {
+        projects: (rows ?? [])
+          .filter((p) => p.id !== excludeProjectId)
+          .map((p) => ({ id: p.id, name: p.name })),
+      };
+    }
+
+    const { data: mems, error: mErr } = await supabase
+      .from("project_members")
+      .select("project_id")
+      .eq("user_id", user.id);
+
+    if (mErr) return { projects: [], error: mErr.message };
+
+    const ids = [...new Set((mems ?? []).map((m) => m.project_id))].filter(
+      (id) => id !== excludeProjectId,
+    );
+    if (ids.length === 0) return { projects: [] };
+
+    const { data: projs, error: pErr } = await supabase
+      .from("projects")
+      .select("id, name")
+      .in("id", ids)
+      .order("name");
+
+    if (pErr) return { projects: [], error: pErr.message };
+    return { projects: (projs ?? []).map((p) => ({ id: p.id, name: p.name })) };
+  } catch (err) {
+    console.error("[fetchDestinationProjectsForMoveAction]", err);
+    return { projects: [], error: "Projekte konnten nicht geladen werden." };
+  }
+}
+
+async function collectPathsToRelocate(
+  svc: ReturnType<typeof createServiceRoleClient>,
+  postId: string,
+  oldProjectId: string,
+  originalPath: string,
+  memePath: string | null,
+): Promise<Map<string, "originals" | "memes">> {
+  const map = new Map<string, "originals" | "memes">();
+  if (originalPath.startsWith(`${oldProjectId}/`)) {
+    map.set(originalPath, "originals");
+  }
+  if (memePath && memePath.startsWith(`${oldProjectId}/`)) {
+    map.set(memePath, "memes");
+  }
+
+  const { data: job } = await svc
+    .from("jobs")
+    .select("error_msg")
+    .eq("post_id", postId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (job?.error_msg) {
+    try {
+      const parsed = JSON.parse(job.error_msg) as JobResult;
+      if (parsed.type === "ai_generated" && Array.isArray(parsed.variantPaths)) {
+        for (const p of parsed.variantPaths) {
+          if (typeof p === "string" && p.startsWith(`${oldProjectId}/`)) {
+            map.set(p, "memes");
+          }
+        }
+      }
+    } catch {
+      /* ignorieren */
+    }
+  }
+
+  return map;
+}
+
+/**
+ * Post in ein anderes Projekt verschieben (Storage-Pfade mitziehen).
+ * Mitglied: nur eigene Posts, Ziel nur eigene Projekte. Admin: beliebig.
+ */
+export async function movePostToProjectAction(
+  postId: string,
+  targetProjectId: string,
+): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Nicht angemeldet" };
+
+  if (!targetProjectId?.trim()) {
+    return { error: "Zielprojekt fehlt" };
+  }
+
+  const { data: actor } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  const isAdmin = actor?.role === "admin";
+
+  const { data: post, error: postErr } = await supabase
+    .from("posts")
+    .select("id, user_id, project_id, original_image_url, meme_image_url")
+    .eq("id", postId)
+    .maybeSingle();
+
+  if (postErr || !post) return { error: "Post nicht gefunden" };
+  if (!post.meme_image_url) {
+    return { error: "Nur veröffentlichte Memes können verschoben werden." };
+  }
+
+  const isOwner = post.user_id === user.id;
+  if (!isOwner && !isAdmin) {
+    return { error: "Keine Berechtigung" };
+  }
+
+  if (post.project_id === targetProjectId) {
+    return { error: "Post ist bereits in diesem Projekt." };
+  }
+
+  if (!isAdmin) {
+    const { data: tgtMem } = await supabase
+      .from("project_members")
+      .select("project_id")
+      .eq("project_id", targetProjectId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!tgtMem) return { error: "Zielprojekt nicht verfügbar oder kein Mitglied." };
+  } else {
+    const { data: exists } = await supabase
+      .from("projects")
+      .select("id")
+      .eq("id", targetProjectId)
+      .maybeSingle();
+    if (!exists) return { error: "Zielprojekt existiert nicht." };
+  }
+
+  const oldProjectId = post.project_id as string;
+  const authorId = post.user_id as string;
+
+  const svc = createServiceRoleClient();
+  const pathMap = await collectPathsToRelocate(
+    svc,
+    postId,
+    oldProjectId,
+    post.original_image_url as string,
+    post.meme_image_url as string,
+  );
+
+  const newPrefix = `${targetProjectId}/${authorId}/`;
+  const oldPrefix = `${oldProjectId}/${authorId}/`;
+
+  const copies: { bucket: "originals" | "memes"; from: string; to: string }[] =
+    [];
+  for (const [fromPath, bucket] of pathMap) {
+    if (!fromPath.startsWith(oldPrefix)) continue;
+    const suffix = fromPath.slice(oldPrefix.length);
+    const toPath = `${newPrefix}${suffix}`;
+    copies.push({ bucket, from: fromPath, to: toPath });
+  }
+
+  if (copies.length === 0) {
+    return { error: "Keine verschiebbaren Dateien gefunden." };
+  }
+
+  for (const c of copies) {
+    const { data: blob, error: dlErr } = await svc.storage
+      .from(c.bucket)
+      .download(c.from);
+    if (dlErr || !blob) {
+      return { error: `Download fehlgeschlagen (${c.from}): ${dlErr?.message ?? ""}` };
+    }
+    const buf = Buffer.from(await blob.arrayBuffer());
+    const { error: upErr } = await svc.storage
+      .from(c.bucket)
+      .upload(c.to, buf, { contentType: "image/jpeg", upsert: true });
+    if (upErr) {
+      return { error: `Upload fehlgeschlagen (${c.to}): ${upErr.message}` };
+    }
+  }
+
+  const newOriginal =
+    post.original_image_url &&
+    String(post.original_image_url).startsWith(oldPrefix)
+      ? `${newPrefix}${String(post.original_image_url).slice(oldPrefix.length)}`
+      : (post.original_image_url as string);
+
+  const newMeme =
+    post.meme_image_url &&
+    String(post.meme_image_url).startsWith(oldPrefix)
+      ? `${newPrefix}${String(post.meme_image_url).slice(oldPrefix.length)}`
+      : (post.meme_image_url as string);
+
+  const { error: updErr } = await svc
+    .from("posts")
+    .update({
+      project_id: targetProjectId,
+      original_image_url: newOriginal,
+      meme_image_url: newMeme,
+    })
+    .eq("id", postId);
+
+  if (updErr) {
+    return { error: updErr.message };
+  }
+
+  const { data: jobRow } = await svc
+    .from("jobs")
+    .select("id, error_msg")
+    .eq("post_id", postId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (jobRow?.error_msg) {
+    try {
+      const parsed = JSON.parse(jobRow.error_msg) as JobResult;
+      if (parsed.type === "ai_generated" && Array.isArray(parsed.variantPaths)) {
+        const nextPaths = parsed.variantPaths.map((p) =>
+          typeof p === "string" && p.startsWith(oldPrefix)
+            ? `${newPrefix}${p.slice(oldPrefix.length)}`
+            : p,
+        );
+        const updated: JobResult = {
+          ...parsed,
+          variantPaths: nextPaths,
+        };
+        await svc
+          .from("jobs")
+          .update({
+            error_msg: JSON.stringify(updated),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", jobRow.id);
+      }
+    } catch {
+      /* ignorieren */
+    }
+  }
+
+  const fromPaths = [...pathMap.keys()];
+  for (const fromPath of fromPaths) {
+    const b = pathMap.get(fromPath)!;
+    await svc.storage.from(b).remove([fromPath]);
+  }
+
+  revalidatePath("/feed");
+  revalidatePath("/profile");
+  return {};
+}
+
 export async function updatePostCaptionAction(
   postId: string,
   caption: string,
@@ -899,5 +1217,93 @@ export async function updatePostCaptionAction(
   } catch (err) {
     console.error("[updatePostCaptionAction]", err);
     return { error: "Fehler beim Speichern der Caption" };
+  }
+}
+
+export type SetMyPostStarRatingResult =
+  | {
+      error?: undefined;
+      star_rating_avg: number | null;
+      star_rating_count: number;
+      my_star_rating: number | null;
+    }
+  | { error: string };
+
+/**
+ * Eigene Sterne-Bewertung setzen oder entfernen (Durchschnitt aller Nutzer, 2 Dezimalstellen).
+ * Erlaubt für jeden eingeloggten Projektmitglied-Post (RLS), nicht nur für eigene Memes.
+ */
+export async function setMyPostStarRatingAction(
+  postId: string,
+  stars: number | null,
+): Promise<SetMyPostStarRatingResult> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Nicht angemeldet" };
+
+    if (
+      stars !== null &&
+      (!Number.isInteger(stars) || stars < 1 || stars > 5)
+    ) {
+      return { error: "Ungültige Sterne-Bewertung" };
+    }
+
+    if (stars === null) {
+      const { error: delErr } = await supabase
+        .from("post_star_ratings")
+        .delete()
+        .eq("post_id", postId)
+        .eq("user_id", user.id);
+      if (delErr) return { error: delErr.message };
+    } else {
+      const { error: upErr } = await supabase.from("post_star_ratings").upsert(
+        {
+          post_id: postId,
+          user_id: user.id,
+          rating: stars,
+        },
+        { onConflict: "post_id,user_id" },
+      );
+      if (upErr) return { error: upErr.message };
+    }
+
+    const { data: prow, error: readErr } = await supabase
+      .from("posts")
+      .select("star_rating_avg, star_rating_count, user_id")
+      .eq("id", postId)
+      .maybeSingle();
+
+    if (readErr || !prow) {
+      return { error: readErr?.message ?? "Post nicht gefunden" };
+    }
+
+    const pr = prow as {
+      star_rating_avg?: number | null;
+      star_rating_count?: number | null;
+      user_id?: string;
+    };
+    const cnt = Number(pr.star_rating_count ?? 0);
+    const postAuthorId = pr.user_id;
+
+    revalidatePath("/feed");
+    revalidatePath("/feed/raster");
+    revalidatePath("/feed/verpasst");
+    revalidatePath("/settings");
+    revalidatePath(`/profile/${user.id}`);
+    if (postAuthorId && postAuthorId !== user.id) {
+      revalidatePath(`/profile/${postAuthorId}`);
+    }
+
+    return {
+      star_rating_avg: pr.star_rating_avg != null ? Number(pr.star_rating_avg) : null,
+      star_rating_count: Number.isFinite(cnt) ? cnt : 0,
+      my_star_rating: stars === null ? null : stars,
+    };
+  } catch (err) {
+    console.error("[setMyPostStarRatingAction]", err);
+    return { error: "Fehler beim Speichern der Bewertung" };
   }
 }

@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -124,19 +130,29 @@ export function UploadFlow() {
   const [step, setStep] = useState<Step>("select");
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [croppedBlob, setCroppedBlob] = useState<Blob | null>(null);
+  /** Object-URL des Zuschnitts – Vorschau muss croppedBlob zeigen, nicht imageSrc (Original). */
+  const [croppedPreviewUrl, setCroppedPreviewUrl] = useState<string | null>(
+    null,
+  );
   const [gps, setGps] = useState<GpsCoords | null>(null);
 
   const [postingMode, setPostingMode] = useState<PostingMode | null>(null);
   const [experimentMasterChoice, setExperimentMasterChoice] = useState(
     ROTATING_EXPERIMENTAL_KEY,
   );
+  const [experimentMinimalLayout, setExperimentMinimalLayout] = useState(false);
 
   const [userText, setUserText] = useState("");
   const [captions, setCaptions] = useState<string[]>([]);
   const [selectedCaption, setSelectedCaption] = useState<string | null>(null);
   const [isLoadingCaptions, setIsLoadingCaptions] = useState(false);
-  const [dailyUsed, setDailyUsed] = useState<number | null>(null);
-  const [dailyLimit, setDailyLimit] = useState<number | null>(null);
+  const [aiQuota, setAiQuota] = useState<{
+    globalLimit: number;
+    globalUsed: number;
+    projectLimit: number;
+    projectUsed: number;
+    remainingEffective: number;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const retrySessionDoneRef = useRef<string | null>(null);
 
@@ -235,16 +251,25 @@ export function UploadFlow() {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
+  useLayoutEffect(() => {
+    if (!croppedBlob) {
+      setCroppedPreviewUrl(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(croppedBlob);
+    setCroppedPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [croppedBlob]);
+
   useEffect(() => {
     if (!activeProjectId) return;
     if (step !== "chooseMode") return;
 
     let cancelled = false;
-    void getDailyAiQuota().then((res) => {
+    void getDailyAiQuota(activeProjectId).then((res) => {
       if (cancelled) return;
       if ("error" in res) return;
-      setDailyLimit(res.limit);
-      setDailyUsed(res.used);
+      setAiQuota(res);
     });
 
     return () => {
@@ -280,6 +305,7 @@ export function UploadFlow() {
         setCaptions([]);
         setSelectedCaption(null);
         setExperimentMasterChoice(ROTATING_EXPERIMENTAL_KEY);
+        setExperimentMinimalLayout(false);
       }
       return mode;
     });
@@ -371,6 +397,9 @@ export function UploadFlow() {
 
     if (postingMode === "ai_experiment") {
       formData.append("aiMasterStyle", experimentMasterChoice);
+      if (experimentMinimalLayout) {
+        formData.append("aiExperimentalMinimal", "1");
+      }
     }
 
     if (retryPostId) {
@@ -399,6 +428,7 @@ export function UploadFlow() {
     userText,
     gps,
     experimentMasterChoice,
+    experimentMinimalLayout,
     startJob,
     router,
     retryPostId,
@@ -500,11 +530,16 @@ export function UploadFlow() {
   }
 
   const remainingAi =
-    dailyLimit != null && dailyUsed != null
-      ? dailyLimit - dailyUsed
-      : null;
+    aiQuota != null ? aiQuota.remainingEffective : null;
   const isAiLimitReached =
-    dailyUsed != null && dailyLimit != null && dailyUsed >= dailyLimit;
+    aiQuota != null && aiQuota.remainingEffective <= 0;
+  const quotaHint =
+    aiQuota != null ? (
+      <span className="block text-[11px] font-normal leading-snug text-zinc-500/95">
+        Global {aiQuota.globalUsed}/{aiQuota.globalLimit} · Projekt{" "}
+        {aiQuota.projectUsed}/{aiQuota.projectLimit}
+      </span>
+    ) : null;
 
   // Schritt: 3 große Varianten
   if (step === "chooseMode") {
@@ -552,9 +587,10 @@ export function UploadFlow() {
             <span className="rounded-full bg-red-500/20 px-2.5 py-1 text-xs font-medium text-red-400">
               Tageslimit erreicht
             </span>
-          ) : remainingAi !== null && dailyLimit !== null ? (
+          ) : remainingAi !== null && aiQuota !== null ? (
             <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-300/90">
-              Heute noch {remainingAi} KI-Bilder frei (von {dailyLimit})
+              Heute noch {remainingAi} KI-Bilder frei (effektives Minimum)
+              {quotaHint}
             </span>
           ) : (
             <span className="rounded-full bg-emerald-950/60 px-2.5 py-1 text-xs text-emerald-400/80">
@@ -646,9 +682,10 @@ export function UploadFlow() {
             <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[11px] font-medium text-red-400">
               Tageslimit erreicht
             </span>
-          ) : remainingAi !== null && dailyLimit !== null ? (
+          ) : remainingAi !== null && aiQuota !== null ? (
             <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 text-[11px] text-cyan-300/90">
-              Wie KI-Vollbild: {remainingAi} von {dailyLimit} frei
+              Wie KI-Vollbild: noch {remainingAi} frei
+              {quotaHint}
             </span>
           ) : (
             <span className="rounded-full bg-cyan-950/60 px-2 py-0.5 text-[11px] text-cyan-400/80">
@@ -683,13 +720,13 @@ export function UploadFlow() {
           </p>
         )}
 
-        {imageSrc && (
-          <div className="relative overflow-hidden rounded-xl border border-zinc-800">
+        {(croppedPreviewUrl ?? imageSrc) && (
+          <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={imageSrc}
-              alt="Dein Foto"
-              className="aspect-[2/3] w-full object-cover"
+              src={croppedPreviewUrl ?? imageSrc!}
+              alt="Dein zugeschnittenes Foto"
+              className="aspect-[2/3] w-full object-contain"
             />
             <button
               type="button"
@@ -819,8 +856,8 @@ export function UploadFlow() {
         )}
 
         {postingMode === "ai_experiment" && (
-          <div className="rounded-xl border border-cyan-600/35 bg-cyan-950/30 px-3 py-2.5">
-            <p className="mb-2 text-xs leading-snug text-zinc-400">
+          <div className="space-y-3 rounded-xl border border-cyan-600/35 bg-cyan-950/30 px-3 py-2.5">
+            <p className="text-xs leading-snug text-zinc-400">
               Hier experimentiert Franz mit dem Meme-Engine herum.
             </p>
             <label className="sr-only" htmlFor="experiment-master-style">
@@ -841,6 +878,18 @@ export function UploadFlow() {
                 </option>
               ))}
             </select>
+            <label className="flex cursor-pointer items-start gap-2.5 text-left">
+              <input
+                type="checkbox"
+                checked={experimentMinimalLayout}
+                onChange={(e) => setExperimentMinimalLayout(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-cyan-700 bg-zinc-900 text-orange-500 focus:ring-orange-500"
+              />
+              <span className="text-xs leading-snug text-zinc-300">
+                Sehr reduzierte Bildelemente (optional) — Fokus auf Text, kaum
+                Deko im Bild.
+              </span>
+            </label>
           </div>
         )}
 

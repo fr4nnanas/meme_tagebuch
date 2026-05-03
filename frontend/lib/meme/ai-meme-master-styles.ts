@@ -11,14 +11,18 @@ export const STANDARD_AI_MEME_BASE_PROMPT =
   "Stil: knalliger Internet-Meme-Look. Alle sichtbaren Texte, Überschriften und Beschriftungen auf dem Bild müssen auf Deutsch formuliert sein (natürliche deutsche Meme-Sprache, Umgangssprache erlaubt).";
 
 /**
- * Vollbild-KI: eigener Basistext für experimentelle Master-Stile — weniger grell, stärker an gängigen Format-Ideen orientiert.
+ * Vollbild-KI: eigener Basistext für experimentelle Master-Stile — weniger Bildelemente, stärkerer Fokus auf Überschriften.
  */
 export const EXPERIMENTAL_AI_MEME_BASE_PROMPT =
-  "Verwandle dieses Foto in ein witziges, teilbares Meme. Lass dich von verbreiteten Internet-Meme-Formaten inspirieren " +
-  "(z. B. Setup–Pointe mit zwei Ebenen, Kontrast oder Vorher–Nachher, beschriftete Figuren oder Pfeile, Reaktions-/Zoom-Fokus, " +
-  "einfache Panels oder kurze Story in wenigen Bildelementen) — setze das eigenständig und überraschend um, keine 1:1-Nachahmung bekannter Vorlagen. " +
-  "Behalte wiedererkennbare Motive aus dem Foto. Ton: humorvoll und pointiert, klar lesbar; lieber zurückhaltende Farben und klare Komposition statt übersättigt oder kitschig grell. " +
-  "Text auf dem Bild nur dort, wo er den Witz trägt. Alle sichtbaren Texte, Überschriften und Beschriftungen ausschließlich auf Deutsch (natürliche Meme-/Umgangssprache).";
+  "Verwandle dieses Foto in ein witziges, teilbares Meme im Ton deutschsprachiger Internet-Memes. " +
+  "Setze den Witz vor allem über eine oder zwei kräftige, gut lesbare Überschriften- oder Meme-Textzeilen (oben/unten oder klar als Hauptzeile); der Text soll die Pointe tragen. " +
+  "Nutze nur sehr wenige, klar pointierte Bildelemente (z. B. ein Kontrast, ein Fokus, ein einzelner visueller Akzent) — keine überladenen Collagen, keine Vielzahl an Figuren, Pfeilen oder Nebenpanels. " +
+  "Behalte wiedererkennbare Motive aus dem Foto. Komposition ruhig und lesbar; zurückhaltende Farben, keine kitschig übersättigte Optik. " +
+  "Alle sichtbaren Texte und Beschriftungen ausschließlich auf Deutsch (natürliche Meme-/Umgangssprache).";
+
+/** Optional im experimentellen Modus: noch stärker reduzierte Bildkomplexität (zusätzlich zum Basis-Experimentelltext). */
+export const AI_EXPERIMENTAL_MINIMAL_LAYOUT_INSET =
+  "Zusätzlich: maximal minimalistisch — höchstens ein einziges pointiertes Bildelement neben dem Text; keine weiteren Deko-Elemente, keine zweite Szene, keine Bild-in-Bild-Ebenen.";
 
 export const STANDARD_AI_MASTER_KEY = "standard";
 
@@ -63,6 +67,41 @@ export const EXPERIMENTAL_AI_MASTER_STYLES: Record<
     label: "Vintage / Deep-Fried",
     promptInset:
       "Leicht verrauschter, übersättigter oder ironisch „schlechter“ Bildlook — ohne unleserlich zu werden; typischer ironischer Low-Fi-Shitpost.",
+  },
+  drake_style: {
+    label: "Drake-Setup (Ja–Nein-Kontrast)",
+    promptInset:
+      "Zwei klar getrennte Felder oder Zustände (z. B. links ablehnend, rechts begeistert): ein Setup lehnt etwas ab, das andere feiert die Alternative — Pointe über den Kontrast, Texte knapp auf Deutsch.",
+  },
+  distracted_focus: {
+    label: "Ablenkung / falscher Fokus",
+    promptInset:
+      "Spiele mit Blickrichtung oder Aufmerksamkeit: eine Figur oder ein Motiv „schielt“ zu etwas Off-Topic, während das eigentliche Thema ignoriert wird — wie Distracted-Boyfriend-Logik, aber frei umgesetzt.",
+  },
+  pov_meme: {
+    label: "POV / Ich-wenn…",
+    promptInset:
+      "Erste-Person-Perspektive oder klares „Ich, wenn …“-Szenario: der Betrachter soll sich hineinversetzen können; eine prägnante deutsche Überschrift trägt die Pointe.",
+  },
+  before_after: {
+    label: "Früher vs. jetzt",
+    promptInset:
+      "Zeitlicher oder Erwartungskontrast in zwei klaren Momenten (z. B. links Anfang, rechts Ende): der Witz liegt im Unterschied, Beschriftungen kurz und deutsch.",
+  },
+  trade_offer: {
+    label: "Tausch-Angebot (ich / du)",
+    promptInset:
+      "Zwei Seiten eines Deals: humorvoll ungleichwertiges Angebot („Ich biete X, du …“) — wie Trade-Offer-Meme, Texte klar lesbar auf Deutsch.",
+  },
+  animal_anthro: {
+    label: "Tier-Meme / anthropomorph",
+    promptInset:
+      "Ein Tier oder Tiergesicht mit menschlich wirkender Pose oder Sprechblasen-Pointe; harmloser Look, Witz über Untertitel oder eine einzige deutsche Meme-Zeile.",
+  },
+  split_me_vs: {
+    label: "Geteilt: ich vs. andere",
+    promptInset:
+      "Zwei Spalten oder Hälften (z. B. „Ich“ vs. „die anderen“ / Erwartung vs. Realität): ein einziger visueller Kontrast, Pointe über die Gegenüberstellung, Text auf Deutsch.",
   },
 };
 

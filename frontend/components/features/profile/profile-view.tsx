@@ -19,9 +19,16 @@ export interface ProfileViewProps {
   isOwner: boolean;
   /** Eingeloggter Nutzer (für Feed-Aktionen im Profilpost-Overlay) */
   currentUserId: string;
+  /** Rolle des eingeloggten Nutzers (Verschieben fremder Posts als Admin) */
+  viewerIsAdmin?: boolean;
 }
 
-export function ProfileView({ profile, isOwner, currentUserId }: ProfileViewProps) {
+export function ProfileView({
+  profile,
+  isOwner,
+  currentUserId,
+  viewerIsAdmin = false,
+}: ProfileViewProps) {
   const [editOpen, setEditOpen] = useState(false);
 
   return (
@@ -101,6 +108,7 @@ export function ProfileView({ profile, isOwner, currentUserId }: ProfileViewProp
             userId={profile.id}
             currentUserId={currentUserId}
             isOwner={isOwner}
+            viewerIsAdmin={viewerIsAdmin}
           />
         </Suspense>
       </div>

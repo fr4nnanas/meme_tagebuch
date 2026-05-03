@@ -14,11 +14,18 @@ import { createClient } from "@/lib/supabase/client";
 import { deletePostAction } from "@/lib/actions/feed";
 import { ProfilePostDetailSheet } from "@/components/features/profile/profile-post-detail-sheet";
 import { useActiveProject } from "@/components/features/app/project-context";
+import {
+  PostStarRating,
+  type PostStarRatingSnapshot,
+} from "@/components/shared/post-star-rating";
+import { fetchMyStarRatingsForPostIds } from "@/lib/meme/fetch-my-star-ratings";
 interface PostGridProps {
   userId: string;
   /** Eingeloggter Nutzer – für Likes, Kommentare, Caption im Detail */
   currentUserId: string;
   isOwner?: boolean;
+  /** Admin darf fremde Posts verschieben */
+  viewerIsAdmin?: boolean;
 }
 
 interface PostThumb {
@@ -26,6 +33,9 @@ interface PostThumb {
   meme_image_url: string | null;
   original_image_url: string;
   created_at: string;
+  star_rating_avg: number | null;
+  star_rating_count: number;
+  my_star_rating: number | null;
   signed_url: string | null;
   original_signed_url: string | null;
 }
@@ -36,7 +46,12 @@ interface FetchResult {
   error: string | null;
 }
 
-export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridProps) {
+export function PostGrid({
+  userId,
+  currentUserId,
+  isOwner = false,
+  viewerIsAdmin = false,
+}: PostGridProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -61,6 +76,19 @@ export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridPro
     router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
   }, [router, pathname, searchParams]);
 
+  const handlePostMovedFromDetail = useCallback(() => {
+    if (!detailPostId) return;
+    setResult((prev) =>
+      prev
+        ? {
+            ...prev,
+            posts: prev.posts.filter((p) => p.id !== detailPostId),
+          }
+        : prev,
+    );
+    closePostDetail();
+  }, [detailPostId, closePostDetail]);
+
   const openPostDetail = useCallback(
     (postId: string) => {
       const params = new URLSearchParams(searchParams.toString());
@@ -76,7 +104,9 @@ export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridPro
 
       const { data, error } = await supabase
         .from("posts")
-        .select("id, meme_image_url, original_image_url, created_at")
+        .select(
+          "id, meme_image_url, original_image_url, created_at, star_rating_avg, star_rating_count",
+        )
         .eq("user_id", userId)
         .eq("project_id", projectId)
         .order("created_at", { ascending: false });
@@ -86,7 +116,38 @@ export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridPro
         return;
       }
 
-      const posts = (data ?? []) as Omit<PostThumb, "signed_url" | "original_signed_url">[];
+      type RawRow = {
+        id: string;
+        meme_image_url: string | null;
+        original_image_url: string;
+        created_at: string;
+        star_rating_avg?: number | null;
+        star_rating_count?: number | null;
+      };
+
+      const rows = (data ?? []) as RawRow[];
+      const postIds = rows.map((r) => r.id);
+      const myStars = await fetchMyStarRatingsForPostIds(
+        supabase,
+        currentUserId,
+        postIds,
+      );
+
+      const posts: Omit<PostThumb, "signed_url" | "original_signed_url">[] = rows.map(
+        (row) => {
+          const cnt = Number(row.star_rating_count ?? 0);
+          return {
+            id: row.id,
+            meme_image_url: row.meme_image_url,
+            original_image_url: row.original_image_url,
+            created_at: row.created_at,
+            star_rating_avg:
+              row.star_rating_avg != null ? Number(row.star_rating_avg) : null,
+            star_rating_count: Number.isFinite(cnt) ? cnt : 0,
+            my_star_rating: myStars.get(row.id) ?? null,
+          };
+        },
+      );
 
       // Signed URLs für den memes-Bucket generieren
       const memePaths = posts
@@ -134,7 +195,7 @@ export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridPro
 
       setResult({ projectId, posts: postsWithUrls, error: null });
     },
-    [userId],
+    [userId, currentUserId],
   );
 
   useEffect(() => {
@@ -221,49 +282,88 @@ export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridPro
           return (
             <div
               key={post.id}
-              className="group relative aspect-[2/3] overflow-hidden rounded-md bg-zinc-800"
+              className="group flex flex-col overflow-hidden rounded-md border border-zinc-800/80 bg-zinc-800 shadow-sm"
             >
-              {displaySrc ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={displaySrc}
-                  alt="Post"
-                  loading="lazy"
-                  onClick={() => openPostDetail(post.id)}
-                  className={`h-full w-full cursor-pointer object-cover transition-opacity active:opacity-75 ${
-                    isPending ? "opacity-50" : ""
-                  }`}
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-zinc-700">
-                  <ImageIcon className="h-6 w-6" />
-                </div>
-              )}
+              <div className="relative aspect-[2/3] w-full shrink-0 bg-zinc-900/40">
+                {displaySrc ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={displaySrc}
+                    alt="Post"
+                    loading="lazy"
+                    onClick={() => openPostDetail(post.id)}
+                    className={`absolute inset-0 h-full w-full cursor-pointer object-cover transition-opacity active:opacity-75 ${
+                      isPending ? "opacity-50" : ""
+                    }`}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-zinc-700">
+                    <ImageIcon className="h-6 w-6" />
+                  </div>
+                )}
+                {isOwner && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(post.id);
+                    }}
+                    disabled={isDeleting}
+                    aria-label="Post löschen"
+                    className="absolute right-1 top-1 z-20 flex h-7 w-7 touch-manipulation items-center justify-center rounded-full bg-zinc-950/75 text-zinc-200 shadow-md ring-1 ring-white/10 transition-colors hover:bg-red-600/90 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isDeleting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                )}
+                {isPending && (
+                  <span className="absolute bottom-1 left-1 z-10 rounded bg-zinc-800/90 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">
+                    in Arbeit
+                  </span>
+                )}
+              </div>
 
-              {isPending && (
-                <span className="absolute bottom-1 left-1 rounded bg-zinc-800/70 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">
-                  in Arbeit
-                </span>
-              )}
-
-              {isOwner && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDelete(post.id);
-                  }}
-                  disabled={isDeleting}
-                  aria-label="Post löschen"
-                  className="absolute right-1 top-1 flex h-7 w-7 touch-manipulation items-center justify-center rounded-full bg-zinc-800/70 text-zinc-300 opacity-100 transition-opacity hover:bg-red-600/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
-                >
-                  {isDeleting ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-3.5 w-3.5" />
-                  )}
-                </button>
-              )}
+              <div className="flex shrink-0 justify-center border-t border-zinc-700/80 bg-zinc-900/95 px-1 py-1.5">
+                {post.meme_image_url ? (
+                  <div
+                    className="flex justify-center"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <PostStarRating
+                      postId={post.id}
+                      starRatingAvg={post.star_rating_avg}
+                      starRatingCount={post.star_rating_count}
+                      myStarRating={post.my_star_rating}
+                      interactive
+                      compact
+                      className="justify-center gap-0"
+                      onUpdated={(v: PostStarRatingSnapshot) => {
+                        setResult((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                posts: prev.posts.map((x) =>
+                                  x.id === post.id
+                                    ? {
+                                        ...x,
+                                        star_rating_avg: v.star_rating_avg,
+                                        star_rating_count: v.star_rating_count,
+                                        my_star_rating: v.my_star_rating,
+                                      }
+                                    : x,
+                                ),
+                              }
+                            : prev,
+                        );
+                      }}
+                    />
+                  </div>
+                ) : null}
+              </div>
             </div>
           );
         })}
@@ -273,7 +373,10 @@ export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridPro
         postId={detailPostId}
         fallbackImageSrc={detailFallbackSrc}
         currentUserId={currentUserId}
+        isAdmin={viewerIsAdmin}
+        entryAsLightbox
         onClose={closePostDetail}
+        onPostMoved={handlePostMovedFromDetail}
       />
     </>
   );

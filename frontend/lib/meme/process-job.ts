@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import {
+  AI_EXPERIMENTAL_MINIMAL_LAYOUT_INSET,
   experimentalPromptInset,
   EXPERIMENTAL_AI_MEME_BASE_PROMPT,
   resolveAiMasterStyleKey,
@@ -26,6 +27,8 @@ export interface ProcessJobParams {
   originalPath: string;
   /** Rohwert aus dem Formular: Preset-Key, „rotate“ oder leer (Standard) */
   aiMasterStyle?: string | null;
+  /** Experimenteller Modus: sehr reduzierte Bildelemente (nur bei nicht-Standard-Master) */
+  aiExperimentalMinimal?: boolean;
 }
 
 // error_msg-Feld wird bei status='completed' als Ergebnisspeicher zweckentfremdet.
@@ -195,6 +198,7 @@ async function buildAiMemePrompt(
   projectId: string,
   userText?: string,
   resolvedMasterStyleKey: string = STANDARD_AI_MASTER_KEY,
+  aiExperimentalMinimal: boolean = false,
 ): Promise<string> {
   const { data: project } = await supabase
     .from("projects")
@@ -207,8 +211,13 @@ async function buildAiMemePrompt(
     resolvedMasterStyleKey === STANDARD_AI_MASTER_KEY
       ? STANDARD_AI_MEME_BASE_PROMPT
       : EXPERIMENTAL_AI_MEME_BASE_PROMPT;
+  const minimalExtra =
+    aiExperimentalMinimal &&
+    resolvedMasterStyleKey !== STANDARD_AI_MASTER_KEY
+      ? ` ${AI_EXPERIMENTAL_MINIMAL_LAYOUT_INSET}`
+      : "";
   const basePrompt =
-    baseCore + (styleExtra ? ` ${styleExtra}` : "");
+    baseCore + (styleExtra ? ` ${styleExtra}` : "") + minimalExtra;
 
   const normalized = normalizeStoredProjectAiContext(project?.ai_prompt_context);
   const contextPart = inlineImageEditProjectContext(normalized);
@@ -238,6 +247,7 @@ async function generateAiMeme(
     params.projectId,
     params.userText,
     resolvedMasterKey,
+    Boolean(params.aiExperimentalMinimal),
   );
 
   const response = await openai.images.edit({
@@ -313,7 +323,7 @@ export async function appendSecondAiVariantToJob(
 
   const { data: post, error: postError } = await supabase
     .from("posts")
-    .select("id, project_id, user_id, original_image_url")
+    .select("id, project_id, user_id, original_image_url, ai_experimental_minimal")
     .eq("id", job.post_id)
     .maybeSingle();
 
@@ -326,11 +336,14 @@ export async function appendSecondAiVariantToJob(
     type: "image/jpeg",
   });
 
+  const postRow = post as typeof post & { ai_experimental_minimal?: boolean };
+
   const prompt = await buildAiMemePrompt(
     supabase,
     post.project_id,
     result.userText,
     result.aiMasterStyle ?? STANDARD_AI_MASTER_KEY,
+    Boolean(postRow.ai_experimental_minimal),
   );
 
   const response = await openai.images.edit({

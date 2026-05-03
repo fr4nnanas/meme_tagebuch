@@ -6,6 +6,7 @@ type ProjectRow = {
   name: string;
   description: string | null;
   ai_prompt_context: string | null;
+  daily_ai_generated_limit?: number;
   created_at: string;
 };
 
@@ -16,12 +17,33 @@ async function fetchProjectsBulk(
 ): Promise<{ data: ProjectRow[] | null; errorMsg: string | null }> {
   const res = await db
     .from("projects")
-    .select("id, name, description, ai_prompt_context, created_at")
+    .select(
+      "id, name, description, ai_prompt_context, daily_ai_generated_limit, created_at",
+    )
     .order("created_at", { ascending: false });
   if (!res.error) {
     return { data: (res.data ?? []) as ProjectRow[], errorMsg: null };
   }
   const msg = res.error.message.toLowerCase();
+  const maybeMissingLimit =
+    msg.includes("daily_ai_generated_limit") ||
+    (msg.includes("column") && msg.includes("does not exist"));
+  if (maybeMissingLimit) {
+    const withoutLimit = await db
+      .from("projects")
+      .select("id, name, description, ai_prompt_context, created_at")
+      .order("created_at", { ascending: false });
+    if (!withoutLimit.error) {
+      const rows = (withoutLimit.data ?? []) as Omit<
+        ProjectRow,
+        "daily_ai_generated_limit"
+      >[];
+      return {
+        data: rows.map((r) => ({ ...r, daily_ai_generated_limit: 5 })),
+        errorMsg: null,
+      };
+    }
+  }
   const maybeMissingAiColumn =
     msg.includes("ai_prompt_context") ||
     (msg.includes("column") && msg.includes("does not exist"));
@@ -35,7 +57,11 @@ async function fetchProjectsBulk(
     }
     const rows = (min.data ?? []) as Omit<ProjectRow, "ai_prompt_context">[];
     return {
-      data: rows.map((r) => ({ ...r, ai_prompt_context: null })),
+      data: rows.map((r) => ({
+        ...r,
+        ai_prompt_context: null,
+        daily_ai_generated_limit: 5,
+      })),
       errorMsg: null,
     };
   }
@@ -129,10 +155,19 @@ export async function loadAdminDashboardData(
     membersByProjectId.set(m.project_id, list);
   }
 
-  const projects = projectRows.map((row) => ({
-    ...row,
-    project_members: membersByProjectId.get(row.id) ?? [],
-  })) satisfies ProjectWithMembers[];
+  const projects = projectRows.map((row) => {
+    const lim =
+      typeof row.daily_ai_generated_limit === "number" &&
+      row.daily_ai_generated_limit >= 1 &&
+      row.daily_ai_generated_limit <= 100
+        ? row.daily_ai_generated_limit
+        : 5;
+    return {
+      ...row,
+      daily_ai_generated_limit: lim,
+      project_members: membersByProjectId.get(row.id) ?? [],
+    };
+  }) satisfies ProjectWithMembers[];
 
   const dataErrors = [
     projectsPkg.errorMsg && `Projekte: ${projectsPkg.errorMsg}`,
@@ -153,11 +188,13 @@ export async function loadAdminDashboardData(
   const aiLimitSetting = settingsMap.get("daily_ai_image_limit");
   const lobbyRaw = settingsMap.get("default_member_project_id")?.trim() ?? "";
 
+  const aiLimit = parseInt(aiLimitSetting ?? "5", 10);
+
   return {
     projects,
     users: (rawUsers ?? []) as UserRow[],
     tokens: (tokens ?? []) as TokenRow[],
-    aiLimit: parseInt(aiLimitSetting ?? "5", 10),
+    aiLimit,
     defaultMemberProjectId: lobbyRaw.length > 0 ? lobbyRaw : null,
     diagnostics,
   };

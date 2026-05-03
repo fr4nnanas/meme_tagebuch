@@ -2,6 +2,7 @@ import type {
   ExportPayloadPost,
   ExportPayloadUser,
 } from "@/lib/actions/export";
+import { fullStarsFromAverage } from "@/lib/meme/star-display";
 
 function escapeHtml(text: string): string {
   return text
@@ -44,14 +45,73 @@ function avatarThumbHtml(
   return `<span class="${phCls}" aria-hidden="true">${initial}</span>`;
 }
 
+function buildExportScoreboardSection(
+  posts: readonly ExportPayloadPost[],
+  avatarRelByUserId: ReadonlyMap<string, string>,
+): string {
+  const byUser = new Map<string, { user: ExportPayloadUser; count: number }>();
+  for (const p of posts) {
+    const id = p.user.id;
+    const prev = byUser.get(id);
+    if (prev) prev.count += 1;
+    else byUser.set(id, { user: p.user, count: 1 });
+  }
+  const rows = [...byUser.values()].sort((a, b) => b.count - a.count);
+  if (rows.length === 0) return "";
+
+  function rankCell(rank: number): string {
+    if (rank === 1) {
+      return `<span class="medal medal-gold" title="Platz 1">🥇</span><span class="sr-only">Platz 1</span>`;
+    }
+    if (rank === 2) {
+      return `<span class="medal medal-silver" title="Platz 2">🥈</span><span class="sr-only">Platz 2</span>`;
+    }
+    if (rank === 3) {
+      return `<span class="medal medal-bronze" title="Platz 3">🥉</span><span class="sr-only">Platz 3</span>`;
+    }
+    return `<span class="medal medal-num">${rank}</span>`;
+  }
+
+  const body = rows
+    .map((r, i) => {
+      const rank = i + 1;
+      return `<tr>
+  <td class="sb-rank">${rankCell(rank)}</td>
+  <td class="sb-user"><span class="sb-av">${avatarThumbHtml(r.user, avatarRelByUserId, "comment")}</span><span class="sb-name">${escapeHtml(r.user.username)}</span></td>
+  <td class="sb-count">${r.count}</td>
+</tr>`;
+    })
+    .join("\n");
+
+  return `<section class="scoreboard" aria-labelledby="sb-title">
+  <h2 id="sb-title">Meme-Scoreboard</h2>
+  <p class="sb-sub">Anzahl veröffentlichter Memes pro Person in diesem Export.</p>
+  <table class="sb-table">
+    <thead><tr><th scope="col">Rang</th><th scope="col">Person</th><th scope="col">Memes</th></tr></thead>
+    <tbody>${body}</tbody>
+  </table>
+</section>`;
+}
+
 /** Standalone Offline-Galerie (dunkles Grid, keine externen Assets). */
 export function buildOfflineGalleryHtml(
   projectName: string,
   posts: readonly ExportPayloadPost[],
   avatarRelByUserId: ReadonlyMap<string, string> = new Map(),
 ): string {
+  const scoreboardHtml = buildExportScoreboardSection(posts, avatarRelByUserId);
+
   const cards = posts
     .map((p) => {
+      const fullStars = fullStarsFromAverage(p.star_rating_avg);
+      const avgTitle =
+        p.star_rating_avg != null && p.star_rating_count > 0
+          ? `Ø ${Number(p.star_rating_avg).toFixed(2)} (${p.star_rating_count} Bewertung${p.star_rating_count === 1 ? "" : "en"})`
+          : "Noch keine Bewertung";
+      const stars =
+        fullStars > 0
+          ? `<span class="stars" title="${escapeHtml(avgTitle)}">${"★".repeat(fullStars)}<span class="stars-empty">${"☆".repeat(5 - fullStars)}</span></span>`
+          : "";
       const cap = p.caption
         ? `<p class="caption">${escapeHtml(p.caption)}</p>`
         : "";
@@ -76,7 +136,10 @@ export function buildOfflineGalleryHtml(
       ${avatarThumbHtml(p.user, avatarRelByUserId, "card")}
       <span class="author">${escapeHtml(p.user.username)}</span>
     </div>
-    <span class="muted meta-date">${formatDe(p.created_at)}</span>
+    <div class="meta-aside">
+      <span class="muted meta-date">${formatDe(p.created_at)}</span>
+      ${stars ? `<span class="meta-stars">${stars}</span>` : ""}
+    </div>
   </div>
   <div class="img-wrap lightbox-trigger" role="button" tabindex="0" aria-label="Foto vergrößern">
     <img src="./images/${p.id}.jpg" alt="Meme" width="600" height="800" decoding="async" />
@@ -171,7 +234,17 @@ export function buildOfflineGalleryHtml(
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .meta-date { flex-shrink: 0; text-align: right; }
+  .meta-aside {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .meta-date { text-align: right; }
+  .meta-stars { font-size: 0.95rem; line-height: 1; }
+  .stars { color: #fbbf24; letter-spacing: 1px; }
+  .stars-empty { opacity: 0.35; }
   .muted { color: #71717a; font-size: 0.8rem; }
   .avatar-thumb-wrap,
   .avatar-sm-wrap {
@@ -367,6 +440,79 @@ export function buildOfflineGalleryHtml(
     padding: 48px 16px;
     grid-column: 1 / -1;
   }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .scoreboard {
+    max-width: 1200px;
+    margin: 0 auto 28px;
+    padding: 0 16px;
+  }
+  .scoreboard h2 {
+    margin: 0 0 6px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #fafafa;
+  }
+  .sb-sub {
+    margin: 0 0 14px;
+    font-size: 0.85rem;
+    color: #a1a1aa;
+  }
+  .sb-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    background: #27272a;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #3f3f46;
+  }
+  .sb-table th {
+    text-align: left;
+    padding: 10px 14px;
+    background: #18181b;
+    color: #a1a1aa;
+    font-weight: 600;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .sb-table td {
+    padding: 10px 14px;
+    border-top: 1px solid #3f3f46;
+    vertical-align: middle;
+  }
+  .sb-rank { width: 4rem; text-align: center; }
+  .sb-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .sb-av { flex-shrink: 0; display: flex; align-items: center; }
+  .sb-name { font-weight: 600; color: #fb923c; }
+  .sb-count { text-align: right; font-variant-numeric: tabular-nums; color: #e4e4e7; }
+  .medal { font-size: 1.35rem; line-height: 1; }
+  .medal-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 8px;
+    background: #3f3f46;
+    color: #d4d4d8;
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
 </style>
 </head>
 <body>
@@ -375,6 +521,7 @@ export function buildOfflineGalleryHtml(
   <p class="subtitle">Offline-Export · ZIP zuerst entpacken, dann diese Datei öffnen (nicht aus dem Archiv-Viewer).</p>
   <p class="hint">Tipp: Auf ein Meme oder Profilbild tippen oder klicken, um es groß anzuzeigen.</p>
 </header>
+${scoreboardHtml}
 <main class="grid">
 ${empty}
 ${cards}

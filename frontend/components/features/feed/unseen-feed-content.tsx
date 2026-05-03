@@ -11,6 +11,7 @@ import {
   type PostWithDetails,
 } from "@/lib/actions/feed";
 import { useLoadMoreOnIntersect } from "@/hooks/use-load-more-on-intersect";
+import type { PostStarRatingSnapshot } from "@/components/shared/post-star-rating";
 import { FeedCard } from "./feed-card";
 
 interface UnseenFeedContentProps {
@@ -107,9 +108,28 @@ export function UnseenFeedContent({
     setPosts((prev) => prev.filter((p) => p.id !== postId));
   }
 
+  function handlePostMovedAway(postId: string) {
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+  }
+
   function handleCaptionUpdated(postId: string, caption: string) {
     setPosts((prev) =>
       prev.map((p) => (p.id === postId ? { ...p, caption: caption || null } : p)),
+    );
+  }
+
+  function handleStarRatingUpdated(postId: string, snap: PostStarRatingSnapshot) {
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId
+          ? {
+              ...p,
+              star_rating_avg: snap.star_rating_avg,
+              star_rating_count: snap.star_rating_count,
+              my_star_rating: snap.my_star_rating,
+            }
+          : p,
+      ),
     );
   }
 
@@ -200,7 +220,7 @@ export function UnseenFeedContent({
       </header>
 
       <p className="mt-3 px-4 text-sm text-zinc-500">
-        Ungesehene Memes im Feed und Memes mit neuen Kommentaren anderer seit deinem letzten Lesen.
+        Ungesehene Memes im Feed und Memes mit neuen Kommentaren seit deinem letzten Lesen.
         Scrollen oder Öffnen aktualisiert den Stand; „Alles als gesehen“ markiert alle Memes des
         Projekts.
       </p>
@@ -260,7 +280,9 @@ export function UnseenFeedContent({
                 isAdmin={isAdmin}
                 onDeleted={handlePostDeleted}
                 onCaptionUpdated={handleCaptionUpdated}
+                onStarRatingUpdated={handleStarRatingUpdated}
                 onCommentCountChange={handleCommentCountChange}
+                onPostMovedAway={handlePostMovedAway}
               />
             ))}
           </div>
@@ -274,7 +296,9 @@ export function UnseenFeedContent({
                   isAdmin={isAdmin}
                   onDeleted={handlePostDeleted}
                   onCaptionUpdated={handleCaptionUpdated}
+                  onStarRatingUpdated={handleStarRatingUpdated}
                   onCommentCountChange={handleCommentCountChange}
+                  onPostMovedAway={handlePostMovedAway}
                 />
               ))}
             </div>

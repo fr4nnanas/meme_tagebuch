@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { ChevronUp, Inbox, LayoutGrid, Loader2, RefreshCw } from "lucide-react";
+import {
+  ChevronUp,
+  Inbox,
+  LayoutGrid,
+  Loader2,
+  RefreshCw,
+  Trophy,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useActiveProject } from "@/components/features/app/project-context";
 import {
@@ -11,7 +18,9 @@ import {
   type PostWithDetails,
 } from "@/lib/actions/feed";
 import { useLoadMoreOnIntersect } from "@/hooks/use-load-more-on-intersect";
+import type { PostStarRatingSnapshot } from "@/components/shared/post-star-rating";
 import { FeedCard } from "./feed-card";
+import { FeedMemeScoreboardDialog } from "./feed-meme-scoreboard-dialog";
 
 interface FeedContentProps {
   currentUserId: string;
@@ -29,6 +38,7 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
   const leadPostsBlockRef = useRef<HTMLDivElement>(null);
   const [showScrollTopFab, setShowScrollTopFab] = useState(false);
   const [unseenCount, setUnseenCount] = useState(0);
+  const [scoreboardOpen, setScoreboardOpen] = useState(false);
 
   const refreshUnseenCount = useCallback(async (projectId: string) => {
     const r = await fetchUnseenCountAction(projectId);
@@ -113,9 +123,28 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
     setPosts((prev) => prev.filter((p) => p.id !== postId));
   }
 
+  function handlePostMovedAway(postId: string) {
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+  }
+
   function handleCaptionUpdated(postId: string, caption: string) {
     setPosts((prev) =>
       prev.map((p) => (p.id === postId ? { ...p, caption: caption || null } : p)),
+    );
+  }
+
+  function handleStarRatingUpdated(postId: string, snap: PostStarRatingSnapshot) {
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId
+          ? {
+              ...p,
+              star_rating_avg: snap.star_rating_avg,
+              star_rating_count: snap.star_rating_count,
+              my_star_rating: snap.my_star_rating,
+            }
+          : p,
+      ),
     );
   }
 
@@ -157,6 +186,14 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
 
   return (
     <div className="flex flex-col pb-6">
+      {activeProjectId && (
+        <FeedMemeScoreboardDialog
+          open={scoreboardOpen}
+          onOpenChange={setScoreboardOpen}
+          projectId={activeProjectId}
+          projectName={activeProject?.name ?? null}
+        />
+      )}
       {/* Header */}
       <header className="flex items-center justify-between px-4 pt-6">
         <div>
@@ -166,6 +203,14 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setScoreboardOpen(true)}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-amber-400"
+            aria-label="Meme-Ranglisten"
+          >
+            <Trophy className="h-5 w-5" />
+          </button>
           <Link
             href="/feed/verpasst"
             className="relative flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-orange-400"
@@ -248,8 +293,10 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
                 isAdmin={isAdmin}
                 onDeleted={handlePostDeleted}
                 onCaptionUpdated={handleCaptionUpdated}
+                onStarRatingUpdated={handleStarRatingUpdated}
                 onCommentCountChange={handleCommentCountChange}
                 onMarkedViewed={handleMarkedViewedFeed}
+                onPostMovedAway={handlePostMovedAway}
               />
             ))}
           </div>
@@ -263,8 +310,10 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
                   isAdmin={isAdmin}
                   onDeleted={handlePostDeleted}
                   onCaptionUpdated={handleCaptionUpdated}
+                  onStarRatingUpdated={handleStarRatingUpdated}
                   onCommentCountChange={handleCommentCountChange}
                   onMarkedViewed={handleMarkedViewedFeed}
+                  onPostMovedAway={handlePostMovedAway}
                 />
               ))}
             </div>

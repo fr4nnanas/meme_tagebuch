@@ -4,7 +4,10 @@ import { useState, useTransition } from "react";
 import { Archive, Link2, Loader2, Share2 } from "lucide-react";
 import { saveAs } from "file-saver";
 import { toast } from "sonner";
-import { fetchProjectExportDataAction } from "@/lib/actions/export";
+import {
+  fetchProjectExportDataAction,
+  type MemeStarSortMode,
+} from "@/lib/actions/export";
 import { buildProjectZipBlob } from "@/lib/export/run-project-zip-export";
 import { shareProjectAlbumLink, shareZipFile } from "@/lib/share/web-share";
 
@@ -21,6 +24,7 @@ export function ProjectExportButton({
   compact = false,
 }: ProjectExportButtonProps) {
   const [progress, setProgress] = useState(0);
+  const [exportSort, setExportSort] = useState<MemeStarSortMode>("created_desc");
   const [isExporting, startExport] = useTransition();
   const [isSharing, startShare] = useTransition();
   const [isLinkShare, startLinkShare] = useTransition();
@@ -28,7 +32,10 @@ export function ProjectExportButton({
   function handleDownloadZip() {
     startExport(async () => {
       setProgress(0);
-      const { payload, error } = await fetchProjectExportDataAction(projectId);
+      const { payload, error } = await fetchProjectExportDataAction(
+        projectId,
+        exportSort,
+      );
       if (error || !payload) {
         toast.error(error ?? "Export nicht möglich");
         return;
@@ -50,7 +57,10 @@ export function ProjectExportButton({
   function handleShareZip() {
     startShare(async () => {
       setProgress(0);
-      const { payload, error } = await fetchProjectExportDataAction(projectId);
+      const { payload, error } = await fetchProjectExportDataAction(
+        projectId,
+        exportSort,
+      );
       if (error || !payload) {
         toast.error(error ?? "Export nicht möglich");
         return;
@@ -109,6 +119,26 @@ export function ProjectExportButton({
 
   return (
     <div className={compact ? "flex flex-col gap-1 items-end" : "space-y-3"}>
+      <div className={compact ? "w-full max-w-[11rem]" : "max-w-md"}>
+        <label htmlFor={`export-sort-${projectId}`} className="sr-only">
+          Reihenfolge im Export
+        </label>
+        <select
+          id={`export-sort-${projectId}`}
+          value={exportSort}
+          onChange={(e) => setExportSort(e.target.value as MemeStarSortMode)}
+          disabled={isExporting || isSharing}
+          className={
+            compact
+              ? "mb-1.5 w-full rounded-lg border border-zinc-700 bg-zinc-900/90 px-2 py-1.5 text-[11px] text-zinc-100 outline-none focus:border-orange-500 disabled:opacity-50"
+              : "mb-2 w-full rounded-lg border border-zinc-700 bg-zinc-900/90 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-orange-500 disabled:opacity-50"
+          }
+        >
+          <option value="created_desc">HTML/ZIP: chronologisch (neu zuerst)</option>
+          <option value="stars_desc">HTML/ZIP: Sterne absteigend</option>
+          <option value="stars_asc">HTML/ZIP: Sterne aufsteigend</option>
+        </select>
+      </div>
       <div
         className={
           compact
