@@ -15,6 +15,7 @@ import { createClient } from "@/lib/supabase/client";
 import { deletePostAction } from "@/lib/actions/feed";
 import { ProfilePostDetailSheet } from "@/components/features/profile/profile-post-detail-sheet";
 import { useActiveProject } from "@/components/features/app/project-context";
+import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
 
 interface ProjectMemeGridProps {
   currentUserId: string;
@@ -24,6 +25,8 @@ interface ProjectMemeGridProps {
 interface PostThumb {
   id: string;
   user_id: string;
+  username: string;
+  avatar_url: string | null;
   meme_image_url: string | null;
   original_image_url: string;
   created_at: string;
@@ -79,7 +82,9 @@ export function ProjectMemeGrid({
 
     const { data, error } = await supabase
       .from("posts")
-      .select("id, user_id, meme_image_url, original_image_url, created_at")
+      .select(
+        "id, user_id, meme_image_url, original_image_url, created_at, users!user_id(username, avatar_url)",
+      )
       .eq("project_id", projectId)
       .order("created_at", { ascending: false });
 
@@ -88,7 +93,25 @@ export function ProjectMemeGrid({
       return;
     }
 
-    const posts = (data ?? []) as Omit<PostThumb, "signed_url" | "original_signed_url">[];
+    type RawPost = Omit<PostThumb, "signed_url" | "original_signed_url" | "username" | "avatar_url"> & {
+      users: { username: string; avatar_url: string | null } | { username: string; avatar_url: string | null }[] | null;
+    };
+
+    const postsRaw = (data ?? []) as RawPost[];
+
+    const posts: Omit<PostThumb, "signed_url" | "original_signed_url">[] = postsRaw.map((p) => {
+      const rawUser = p.users;
+      const u = Array.isArray(rawUser) ? rawUser[0] : rawUser;
+      return {
+        id: p.id,
+        user_id: p.user_id,
+        meme_image_url: p.meme_image_url,
+        original_image_url: p.original_image_url,
+        created_at: p.created_at,
+        username: u?.username ?? "Unbekannt",
+        avatar_url: u?.avatar_url ?? null,
+      };
+    });
 
     const memePaths = posts
       .filter((p) => p.meme_image_url)
@@ -249,6 +272,40 @@ export function ProjectMemeGrid({
                   key={post.id}
                   className="group relative aspect-[2/3] overflow-hidden rounded-md bg-zinc-800"
                 >
+                  <div className="absolute inset-x-0 top-0 z-10 flex items-center gap-1.5 bg-gradient-to-b from-black/80 via-black/35 to-transparent px-1.5 pb-6 pt-1.5">
+                    <UserAvatarLightbox
+                      avatarUrl={post.avatar_url}
+                      username={post.username}
+                      sizeClassName="h-7 w-7 shrink-0"
+                      placeholderIconClassName="h-3.5 w-3.5"
+                    />
+                    <Link
+                      href={`/profile/${post.user_id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="min-w-0 flex-1 truncate text-left text-[11px] font-semibold leading-tight text-white drop-shadow-md"
+                    >
+                      {post.username}
+                    </Link>
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(post.id);
+                        }}
+                        disabled={isDeleting}
+                        aria-label="Post löschen"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-zinc-900/75 text-zinc-200 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-red-600/90 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isDeleting ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+
                   {displaySrc ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -267,28 +324,9 @@ export function ProjectMemeGrid({
                   )}
 
                   {isPending && (
-                    <span className="absolute bottom-1 left-1 rounded bg-zinc-800/70 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">
+                    <span className="absolute bottom-1 left-1 z-10 rounded bg-zinc-800/70 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">
                       in Arbeit
                     </span>
-                  )}
-
-                  {canDelete && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(post.id);
-                      }}
-                      disabled={isDeleting}
-                      aria-label="Post löschen"
-                      className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800/70 text-zinc-300 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-600/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {isDeleting ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-3.5 w-3.5" />
-                      )}
-                    </button>
                   )}
                 </div>
               );
