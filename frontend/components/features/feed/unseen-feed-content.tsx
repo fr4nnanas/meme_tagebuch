@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { CheckCheck, ChevronLeft, Loader2, RefreshCw } from "lucide-react";
+import { CheckCheck, ChevronLeft, ChevronUp, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useActiveProject } from "@/components/features/app/project-context";
 import {
@@ -30,6 +30,8 @@ export function UnseenFeedContent({
   const [isLoadingMore, startLoadMoreTransition] = useTransition();
   const [isMarkingAll, startMarkAllTransition] = useTransition();
   const loadedProjectRef = useRef<string | null>(null);
+  const leadPostsBlockRef = useRef<HTMLDivElement>(null);
+  const [showScrollTopFab, setShowScrollTopFab] = useState(false);
 
   const loadPosts = useCallback(
     async (projectId: string, targetPage: number, append: boolean) => {
@@ -59,6 +61,33 @@ export function UnseenFeedContent({
     setHasMore(false);
     void loadPosts(activeProjectId, 0, false);
   }, [activeProjectId, loadPosts]);
+
+  useEffect(() => {
+    let rafId = 0;
+    const updateFab = () => {
+      if (posts.length === 0) {
+        setShowScrollTopFab(false);
+        return;
+      }
+      const el = leadPostsBlockRef.current;
+      if (!el) {
+        setShowScrollTopFab(false);
+        return;
+      }
+      const rect = el.getBoundingClientRect();
+      const scrolledPastLead = rect.bottom < 140;
+      const notAtTop = window.scrollY > 56;
+      setShowScrollTopFab(scrolledPastLead && notAtTop);
+    };
+    rafId = requestAnimationFrame(updateFab);
+    window.addEventListener("scroll", updateFab, { passive: true });
+    window.addEventListener("resize", updateFab);
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener("scroll", updateFab);
+      window.removeEventListener("resize", updateFab);
+    };
+  }, [posts]);
 
   const handleLoadMore = useCallback(() => {
     if (!activeProjectId) return;
@@ -123,6 +152,10 @@ export function UnseenFeedContent({
         );
       }
     });
+  }
+
+  function scrollFeedToTop() {
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   if (!activeProjectId) {
@@ -217,19 +250,48 @@ export function UnseenFeedContent({
       )}
 
       {posts.length > 0 && (
-        <div className="mt-6 flex flex-col gap-6 px-4">
-          {posts.map((post) => (
-            <FeedCard
-              key={post.id}
-              post={post}
-              currentUserId={currentUserId}
-              isAdmin={isAdmin}
-              onDeleted={handlePostDeleted}
-              onCaptionUpdated={handleCaptionUpdated}
-              onCommentCountChange={handleCommentCountChange}
-            />
-          ))}
+        <div className="mt-6 px-4">
+          <div ref={leadPostsBlockRef} className="flex flex-col gap-6">
+            {posts.slice(0, 3).map((post) => (
+              <FeedCard
+                key={post.id}
+                post={post}
+                currentUserId={currentUserId}
+                isAdmin={isAdmin}
+                onDeleted={handlePostDeleted}
+                onCaptionUpdated={handleCaptionUpdated}
+                onCommentCountChange={handleCommentCountChange}
+              />
+            ))}
+          </div>
+          {posts.length > 3 && (
+            <div className="mt-6 flex flex-col gap-6">
+              {posts.slice(3).map((post) => (
+                <FeedCard
+                  key={post.id}
+                  post={post}
+                  currentUserId={currentUserId}
+                  isAdmin={isAdmin}
+                  onDeleted={handlePostDeleted}
+                  onCaptionUpdated={handleCaptionUpdated}
+                  onCommentCountChange={handleCommentCountChange}
+                />
+              ))}
+            </div>
+          )}
         </div>
+      )}
+
+      {showScrollTopFab && (
+        <button
+          type="button"
+          onClick={scrollFeedToTop}
+          className="fixed bottom-24 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border border-zinc-600 bg-zinc-800/95 px-4 py-2.5 text-sm font-medium text-zinc-100 shadow-lg backdrop-blur-sm transition-colors hover:border-orange-500/50 hover:bg-zinc-800 hover:text-orange-200"
+          aria-label="An den Anfang scrollen"
+        >
+          <ChevronUp className="h-4 w-4 shrink-0" aria-hidden />
+          An den Anfang scrollen
+        </button>
       )}
 
       {hasMore && posts.length > 0 && (

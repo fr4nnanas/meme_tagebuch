@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useOptimistic,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import {
   Check,
   Heart,
@@ -21,6 +28,7 @@ import {
 import { useJobContext } from "@/components/features/app/job-context";
 import { CommentThread } from "@/components/features/feed/comment-thread";
 import { PostLikersOverlay } from "@/components/features/feed/post-likers-overlay";
+import { PostRecentLikersOnImage } from "@/components/features/feed/post-recent-likers-on-image";
 import { MemeImageLightbox } from "@/components/shared/meme-image-lightbox";
 import { MemePromptDisclosure } from "@/components/shared/meme-prompt-disclosure";
 import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
@@ -88,6 +96,24 @@ export function ProfilePostDetailSheet({
   const [isSharing, startShareTransition] = useTransition();
   const [likersOpen, setLikersOpen] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const commentComposerRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const scrollToCommentsAndFocusComposer = useCallback(() => {
+    if (!post) return;
+    setLightboxOpen(false);
+    const targetId = post.id;
+    window.requestAnimationFrame(() => {
+      document.getElementById(`comments-${targetId}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          commentComposerRef.current?.focus({ preventScroll: true });
+        });
+      });
+    });
+  }, [post]);
 
   useEffect(() => {
     if (!postId) {
@@ -245,6 +271,16 @@ export function ProfilePostDetailSheet({
         return;
       }
       setLikeState({ liked: result.liked, count: result.like_count });
+      setPost((prev) =>
+        prev
+          ? {
+              ...prev,
+              like_count: result.like_count,
+              liked_by_me: result.liked,
+              recent_likers: result.recent_likers,
+            }
+          : null,
+      );
     });
   }
 
@@ -339,6 +375,76 @@ export function ProfilePostDetailSheet({
     (jobPollDetail?.status === "pending" ||
       jobPollDetail?.status === "processing");
 
+  /** Wie Feed-Card: Kommentar, Like, Geliked, Teilen rechts — für Sheet und Lightbox */
+  const postSocialActionsEl =
+    !isLoadingDetail && post ? (
+      <div className="mx-auto flex w-full max-w-lg items-center gap-1">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+          <button
+            type="button"
+            onClick={scrollToCommentsAndFocusComposer}
+            aria-label="Kommentar schreiben"
+            className="flex h-10 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800/80 hover:text-zinc-100"
+          >
+            <MessageCircle className="h-5 w-5" />
+            <span>{commentCount}</span>
+          </button>
+
+          <div className="flex items-center gap-0">
+            <button
+              type="button"
+              onClick={handleLike}
+              disabled={isLiking}
+              aria-label={optimisticLike.liked ? "Like entfernen" : "Liken"}
+              className={`flex h-10 items-center gap-1.5 rounded-full text-sm font-medium transition-colors hover:bg-zinc-800/80 disabled:cursor-not-allowed ${
+                optimisticLike.count > 0 ? "pl-3 pr-0.5" : "px-3"
+              }`}
+            >
+              <Heart
+                className={`h-5 w-5 transition-colors ${
+                  optimisticLike.liked
+                    ? "fill-orange-500 text-orange-500"
+                    : "text-zinc-400"
+                }`}
+              />
+              <span
+                className={
+                  optimisticLike.liked ? "text-orange-400" : "text-zinc-400"
+                }
+              >
+                {optimisticLike.count}
+              </span>
+            </button>
+
+            {optimisticLike.count > 0 && (
+              <button
+                type="button"
+                onClick={() => setLikersOpen(true)}
+                aria-haspopup="dialog"
+                className="flex h-10 items-center rounded-full pl-0.5 pr-3 text-sm font-medium text-zinc-400 underline-offset-2 transition-colors hover:bg-zinc-800/80 hover:text-zinc-100"
+              >
+                Geliked
+              </button>
+            )}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleShareMeme}
+          disabled={isSharing || !post.signed_url}
+          aria-label="Meme teilen"
+          className="flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800/80 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {isSharing ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <Share2 className="h-5 w-5" />
+          )}
+        </button>
+      </div>
+    ) : null;
+
   return (
     <>
       {postId && (
@@ -354,6 +460,7 @@ export function ProfilePostDetailSheet({
         onClose={() => setLightboxOpen(false)}
         memeSrc={post?.signed_url ?? fallbackImageSrc}
         originalSrc={post?.original_signed_url ?? null}
+        footer={postSocialActionsEl ?? undefined}
       />
 
       <div
@@ -363,24 +470,8 @@ export function ProfilePostDetailSheet({
 
       <div className="fixed inset-0 z-[35] flex flex-col overflow-hidden">
         <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-2 border-b border-zinc-800 bg-zinc-900/95 px-2 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-          <div className="flex w-10 shrink-0 justify-center">
-            {post?.signed_url ? (
-              <button
-                type="button"
-                onClick={handleShareMeme}
-                disabled={isSharing}
-                aria-label="Meme teilen"
-                className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-50"
-              >
-                {isSharing ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <Share2 className="h-5 w-5" />
-                )}
-              </button>
-            ) : (
-              <span className="w-10" aria-hidden />
-            )}
+          <div className="flex w-10 shrink-0 justify-center" aria-hidden>
+            <span className="inline-block w-10" />
           </div>
           <div className="flex min-w-0 justify-center px-2 text-center">
             {post ? (
@@ -442,6 +533,13 @@ export function ProfilePostDetailSheet({
                       alt="Meme"
                       className="h-full w-full object-cover"
                     />
+                    {post ? (
+                      <PostRecentLikersOnImage
+                        likers={post.recent_likers}
+                        likeCount={optimisticLike.count}
+                        onOpenList={() => setLikersOpen(true)}
+                      />
+                    ) : null}
                   </button>
                 ) : (
                   <div className="flex h-full min-h-[200px] w-full items-center justify-center">
@@ -509,54 +607,8 @@ export function ProfilePostDetailSheet({
 
               {!isLoadingDetail && post && (
                 <>
-                  <div className="flex flex-wrap items-center gap-1 border-b border-zinc-800 px-4 py-2">
-                    <button
-                      type="button"
-                      onClick={handleLike}
-                      disabled={isLiking}
-                      aria-label={optimisticLike.liked ? "Like entfernen" : "Liken"}
-                      className="flex h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed"
-                    >
-                      <Heart
-                        className={`h-6 w-6 transition-colors ${
-                          optimisticLike.liked
-                            ? "fill-orange-500 text-orange-500"
-                            : "text-zinc-400"
-                        }`}
-                      />
-                      <span
-                        className={
-                          optimisticLike.liked ? "text-orange-400" : "text-zinc-400"
-                        }
-                      >
-                        {optimisticLike.count}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        document
-                          .getElementById(`comments-${post.id}`)
-                          ?.scrollIntoView({ behavior: "smooth", block: "start" })
-                      }
-                      aria-label="Zu den Kommentaren scrollen"
-                      className="flex h-11 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-                    >
-                      <MessageCircle className="h-6 w-6" />
-                      <span>{commentCount}</span>
-                    </button>
-
-                    {optimisticLike.count > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setLikersOpen(true)}
-                        aria-haspopup="dialog"
-                        className="flex h-11 items-center rounded-full px-3 text-sm font-medium text-zinc-400 underline-offset-2 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-                      >
-                        Geliked
-                      </button>
-                    )}
+                  <div className="border-b border-zinc-800 px-3 pt-2">
+                    {postSocialActionsEl}
                   </div>
 
                   <div className="px-4 pb-6 pt-2">
@@ -648,6 +700,7 @@ export function ProfilePostDetailSheet({
                     <CommentThread
                       postId={post.id}
                       currentUserId={currentUserId}
+                      composerRef={commentComposerRef}
                       onCommentAdded={() => setCommentCount((c) => c + 1)}
                       onCommentDeleted={() => setCommentCount((c) => Math.max(0, c - 1))}
                     />

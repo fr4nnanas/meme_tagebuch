@@ -255,7 +255,7 @@ export function PostGrid({ userId, currentUserId, isOwner = false }: PostGridPro
                   }}
                   disabled={isDeleting}
                   aria-label="Post löschen"
-                  className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800/70 text-zinc-300 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-600/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  className="absolute right-1 top-1 flex h-7 w-7 touch-manipulation items-center justify-center rounded-full bg-zinc-800/70 text-zinc-300 opacity-100 transition-opacity hover:bg-red-600/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                 >
                   {isDeleting ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />

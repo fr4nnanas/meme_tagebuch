@@ -19,10 +19,49 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+/**
+ * Web-Push braucht sicheren Kontext (HTTPS oder localhost), Service Worker und
+ * PushManager. Den Berechtigungsdialog sollte der Browser nur zeigen, wenn
+ * `requestPermission` möglichst früh nach einer Nutzeraktion läuft — nicht nach
+ * `startTransition` und mehreren awaits (sonst blockiert der Browser oft still).
+ */
 async function registerPushSubscription(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+
+  if (!window.isSecureContext) {
+    toast.error(
+      "Push braucht eine sichere Verbindung (HTTPS). Über HTTP im lokalen Netzwerk (z. B. IP-Adresse) blockieren Browser Push.",
+    );
+    return false;
+  }
+
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
     toast.error("Push wird in diesem Browser nicht unterstützt.");
     return false;
+  }
+
+  if (!("Notification" in window)) {
+    toast.error("Benachrichtigungen werden in diesem Browser nicht unterstützt.");
+    return false;
+  }
+
+  if (Notification.permission === "denied") {
+    toast.error(
+      "Benachrichtigungen sind für diese Seite blockiert. Bitte in den Browser-Site-Einstellungen für diese URL erlauben und erneut versuchen.",
+    );
+    return false;
+  }
+
+  if (Notification.permission === "default") {
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") {
+      toast.message(
+        perm === "denied"
+          ? "Benachrichtigungen wurden abgelehnt. Du kannst sie in den Site-Einstellungen des Browsers später erlauben."
+          : "Benachrichtigungen wurden nicht erlaubt.",
+      );
+      return false;
+    }
   }
 
   const vapidRes = await fetch("/api/push/vapid-public-key");
@@ -32,14 +71,12 @@ async function registerPushSubscription(): Promise<boolean> {
     return false;
   }
 
-  const reg = await navigator.serviceWorker.register("/sw.js");
+  const reg = await navigator.serviceWorker.register("/sw.js", {
+    scope: "/",
+    updateViaCache: "none",
+  });
   await reg.update();
-
-  const perm = await Notification.requestPermission();
-  if (perm !== "granted") {
-    toast.message("Benachrichtigungen wurden nicht erlaubt.");
-    return false;
-  }
+  await navigator.serviceWorker.ready;
 
   const sub = await reg.pushManager.subscribe({
     userVisibleOnly: true,
@@ -91,6 +128,8 @@ export function FeedNotificationSettings() {
   const [includeOwn, setIncludeOwn] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [isPending, startTransition] = useTransition();
+  /** Push-Toggle nicht in startTransition: sonst kann der Berechtigungsdialog zu spät kommen. */
+  const [pushToggleBusy, setPushToggleBusy] = useState(false);
 
   const load = useCallback(() => {
     startTransition(async () => {
@@ -109,33 +148,40 @@ export function FeedNotificationSettings() {
   }, [load]);
 
   function handleMasterToggle(next: boolean) {
-    startTransition(async () => {
-      if (next) {
-        const ok = await registerPushSubscription();
-        if (!ok) {
-          await saveFeedNotificationSettingsAction({ push_enabled: false });
-          setPushEnabled(false);
+    if (pushToggleBusy) return;
+
+    void (async () => {
+      setPushToggleBusy(true);
+      try {
+        if (next) {
+          const ok = await registerPushSubscription();
+          if (!ok) {
+            await saveFeedNotificationSettingsAction({ push_enabled: false });
+            setPushEnabled(false);
+            return;
+          }
+          const err = await saveFeedNotificationSettingsAction({ push_enabled: true });
+          if (err.error) {
+            toast.error(err.error);
+            return;
+          }
+          setPushEnabled(true);
+          toast.success("Push-Benachrichtigungen aktiviert.");
           return;
         }
-        const err = await saveFeedNotificationSettingsAction({ push_enabled: true });
+
+        await unregisterPushSubscription();
+        const err = await saveFeedNotificationSettingsAction({ push_enabled: false });
         if (err.error) {
           toast.error(err.error);
           return;
         }
-        setPushEnabled(true);
-        toast.success("Push-Benachrichtigungen aktiviert.");
-        return;
+        setPushEnabled(false);
+        toast.success("Push-Benachrichtigungen ausgeschaltet.");
+      } finally {
+        setPushToggleBusy(false);
       }
-
-      await unregisterPushSubscription();
-      const err = await saveFeedNotificationSettingsAction({ push_enabled: false });
-      if (err.error) {
-        toast.error(err.error);
-        return;
-      }
-      setPushEnabled(false);
-      toast.success("Push-Benachrichtigungen ausgeschaltet.");
-    });
+    })();
   }
 
   function handleIncludeOwn(next: boolean) {
@@ -165,9 +211,10 @@ export function FeedNotificationSettings() {
       <div>
         <h2 className="text-sm font-medium text-zinc-400">Feed & Push</h2>
         <p className="mt-1 text-xs text-zinc-500">
-          Bei neuen Memes im Projekt-Feed benachrichtigen (Browser-Push). Funktioniert
-          am zuverlässigsten, wenn die App als Lesezeichen oder installierte Web-App
-          genutzt wird.
+          Bei neuen Memes im Projekt-Feed benachrichtigen (Browser-Push). Braucht
+          HTTPS (oder localhost), eine erlaubte Site-Benachrichtigung und einen
+          Service Worker — nicht E-Mail. Am zuverlässigsten als installierte Web-App
+          oder festes Lesezeichen.
         </p>
       </div>
 
@@ -187,7 +234,7 @@ export function FeedNotificationSettings() {
             type="button"
             role="switch"
             aria-checked={pushEnabled}
-            disabled={isPending}
+            disabled={isPending || pushToggleBusy}
             onClick={() => handleMasterToggle(!pushEnabled)}
             className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
               pushEnabled ? "bg-orange-500" : "bg-zinc-700"

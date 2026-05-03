@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type MutableRefObject,
+  type Ref,
+} from "react";
 import { Heart, Loader2, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -12,12 +20,23 @@ import {
 } from "@/lib/actions/feed";
 import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
 
+function assignRef<T>(ref: Ref<T> | undefined, value: T | null) {
+  if (ref == null) return;
+  if (typeof ref === "function") {
+    ref(value);
+  } else {
+    (ref as MutableRefObject<T | null>).current = value;
+  }
+}
+
 export interface CommentThreadProps {
   postId: string;
   currentUserId: string;
   onCommentAdded: () => void;
   onCommentDeleted: () => void;
   className?: string;
+  /** Ref auf das Kommentar-Textfeld (z. B. Fokus von der Sprechblasen-Aktion) */
+  composerRef?: Ref<HTMLTextAreaElement | null>;
 }
 
 export function CommentThread({
@@ -26,13 +45,19 @@ export function CommentThread({
   onCommentAdded,
   onCommentDeleted,
   className = "",
+  composerRef,
 }: CommentThreadProps) {
   const [comments, setComments] = useState<CommentWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [text, setText] = useState("");
   const [isSubmitting, startSubmitTransition] = useTransition();
   const listRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const setComposerEl = useCallback(
+    (el: HTMLTextAreaElement | null) => {
+      assignRef(composerRef, el);
+    },
+    [composerRef],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -168,7 +193,7 @@ export function CommentThread({
       <div className="border-t border-zinc-800/90 px-0 pb-1 pt-2">
         <div className="flex items-end gap-2">
           <textarea
-            ref={inputRef}
+            ref={setComposerEl}
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}

@@ -51,7 +51,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Alle Routen außer Static Assets und Auth-Callback
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Alle Routen außer Static Assets, Service Worker (Push) und Auth-Callback
+    "/((?!_next/static|_next/image|favicon.ico|sw\\.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

@@ -295,7 +295,7 @@ export function ProjectMemeGrid({
                         }}
                         disabled={isDeleting}
                         aria-label="Post löschen"
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-zinc-900/75 text-zinc-200 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:bg-red-600/90 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex h-7 w-7 shrink-0 touch-manipulation items-center justify-center rounded-full bg-zinc-900/75 text-zinc-200 opacity-100 shadow-sm transition-opacity hover:bg-red-600/90 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                       >
                         {isDeleting ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />

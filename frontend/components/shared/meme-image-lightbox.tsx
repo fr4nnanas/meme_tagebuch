@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
 export interface MemeImageLightboxProps {
@@ -12,6 +19,13 @@ export interface MemeImageLightboxProps {
   originalSrc: string | null;
   memeAlt?: string;
   originalAlt?: string;
+  /**
+   * Bei true: History-Eintrag wie bei `UserAvatarLightbox`, damit Browser-/Gesten-Zurück
+   * die Lightbox schließt statt unerwartet die Feed-Route zu verlassen.
+   */
+  historySync?: boolean;
+  /** z. B. Like/Kommentar/Teilen — unter dem Bild, wie im Feed */
+  footer?: ReactNode;
 }
 
 export function MemeImageLightbox({
@@ -21,11 +35,46 @@ export function MemeImageLightbox({
   originalSrc,
   memeAlt = "Meme",
   originalAlt = "Originalfoto",
+  historySync = true,
+  footer,
 }: MemeImageLightboxProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState<0 | 1>(1);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const historyPushedRef = useRef(false);
 
   const hasPair = Boolean(memeSrc && originalSrc);
+
+  const requestClose = useCallback(() => {
+    if (historySync) window.history.back();
+    else onCloseRef.current();
+  }, [historySync]);
+
+  useLayoutEffect(() => {
+    if (!historySync || !open) return;
+
+    function onPopState() {
+      historyPushedRef.current = false;
+      onCloseRef.current();
+    }
+
+    window.history.pushState(
+      { memeImageLightbox: true },
+      "",
+      window.location.href,
+    );
+    historyPushedRef.current = true;
+    window.addEventListener("popstate", onPopState);
+
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      if (historyPushedRef.current) {
+        window.history.back();
+        historyPushedRef.current = false;
+      }
+    };
+  }, [open, historySync]);
 
   const scrollToPage = useCallback((target: 0 | 1) => {
     const el = scrollerRef.current;
@@ -49,14 +98,14 @@ export function MemeImageLightbox({
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") requestClose();
       if (!hasPair) return;
       if (e.key === "ArrowLeft") scrollToPage(0);
       if (e.key === "ArrowRight") scrollToPage(1);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose, hasPair, scrollToPage]);
+  }, [open, hasPair, scrollToPage, requestClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -75,7 +124,7 @@ export function MemeImageLightbox({
       role="dialog"
       aria-modal="true"
       aria-label="Vergrößertes Bild"
-      onClick={onClose}
+      onClick={requestClose}
     >
       <div
         className="flex shrink-0 justify-end px-2 pt-[max(0.5rem,env(safe-area-inset-top))]"
@@ -83,7 +132,7 @@ export function MemeImageLightbox({
       >
         <button
           type="button"
-          onClick={onClose}
+          onClick={requestClose}
           aria-label="Schließen"
           className="rounded-full p-2.5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
         >
@@ -107,7 +156,7 @@ export function MemeImageLightbox({
             >
               <div
                 className="flex h-full w-full min-w-full shrink-0 snap-center snap-always items-center justify-center p-1"
-                onClick={onClose}
+                onClick={requestClose}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -119,7 +168,7 @@ export function MemeImageLightbox({
               </div>
               <div
                 className="flex h-full w-full min-w-full shrink-0 snap-center snap-always items-center justify-center p-1"
-                onClick={onClose}
+                onClick={requestClose}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -130,6 +179,15 @@ export function MemeImageLightbox({
                 />
               </div>
             </div>
+
+            {footer ? (
+              <div
+                className="shrink-0 border-t border-white/10 bg-black/55 px-2 pt-2"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {footer}
+              </div>
+            ) : null}
 
             <div
               className="flex shrink-0 flex-col items-center gap-2 pb-[env(safe-area-inset-bottom,8px)] pt-2"
@@ -169,19 +227,29 @@ export function MemeImageLightbox({
             </div>
           </>
         ) : (
-          <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center p-2">
-            <button
-              type="button"
-              aria-label="Schließen"
-              className="absolute inset-0 z-0 cursor-default border-0 bg-transparent"
-              onClick={onClose}
-            />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={memeSrc}
-              alt={memeAlt}
-              className="relative z-10 max-h-[min(88dvh,920px)] max-w-full object-contain"
-            />
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center p-2">
+              <button
+                type="button"
+                aria-label="Schließen"
+                className="absolute inset-0 z-0 cursor-default border-0 bg-transparent"
+                onClick={requestClose}
+              />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={memeSrc}
+                alt={memeAlt}
+                className="relative z-10 max-h-[min(88dvh,920px)] max-w-full object-contain"
+              />
+            </div>
+            {footer ? (
+              <div
+                className="shrink-0 border-t border-white/10 bg-black/55 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom,8px))] pt-2"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {footer}
+              </div>
+            ) : null}
           </div>
         )}
       </div>

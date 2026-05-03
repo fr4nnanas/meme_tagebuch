@@ -19,14 +19,16 @@ import {
   markPostViewedAction,
   togglePostLikeAction,
   updatePostCaptionAction,
+  type PostLiker,
   type PostWithDetails,
 } from "@/lib/actions/feed";
-import { MemeImageLightbox } from "@/components/shared/meme-image-lightbox";
 import { MemePromptDisclosure } from "@/components/shared/meme-prompt-disclosure";
+import { FeedMediaStrip } from "./feed-media-strip";
 import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
 import { shareMemeFromPost } from "@/lib/share/web-share";
 import { CommentThread } from "./comment-thread";
 import { PostLikersOverlay } from "./post-likers-overlay";
+import { PostRecentLikersOnImage } from "./post-recent-likers-on-image";
 
 interface FeedCardProps {
   post: PostWithDetails;
@@ -74,10 +76,30 @@ export function FeedCard({
   const [isDeletingPost, startDeleteTransition] = useTransition();
   const [isLiking, startLikeTransition] = useTransition();
   const [isSharing, startShareTransition] = useTransition();
-  const [lightboxOpen, setLightboxOpen] = useState(false);
   const [likersOpen, setLikersOpen] = useState(false);
+  const [recentLikers, setRecentLikers] = useState<PostLiker[]>(post.recent_likers);
   const articleRef = useRef<HTMLElement>(null);
   const viewTracked = useRef(false);
+  const commentComposerRef = useRef<HTMLTextAreaElement | null>(null);
+
+  function scrollToCommentsAndFocusComposer() {
+    document.getElementById(`comments-${post.id}`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        commentComposerRef.current?.focus({ preventScroll: true });
+      });
+    });
+  }
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      setRecentLikers(post.recent_likers);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [post.id, post.recent_likers]);
 
   useEffect(() => {
     const el = articleRef.current;
@@ -118,6 +140,7 @@ export function FeedCard({
         return;
       }
       setLikeState({ liked: result.liked, count: result.like_count });
+      setRecentLikers(result.recent_likers);
     });
   }
 
@@ -204,13 +227,6 @@ export function FeedCard({
 
   return (
     <>
-      <MemeImageLightbox
-        open={lightboxOpen}
-        onClose={() => setLightboxOpen(false)}
-        memeSrc={post.signed_url}
-        originalSrc={post.original_signed_url}
-      />
-
       <article
         ref={articleRef}
         className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-800"
@@ -278,23 +294,21 @@ export function FeedCard({
           )}
         </div>
 
-        {/* Meme image */}
+        {/* Meme / Original: wischen, Doppeltipp = Like */}
         <div className="aspect-[2/3] w-full overflow-hidden bg-zinc-800">
           {post.signed_url ? (
-            <button
-              type="button"
-              onClick={() => setLightboxOpen(true)}
-              aria-label="Bild vergrößern"
-              className="relative block h-full w-full cursor-zoom-in border-0 bg-transparent p-0"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={post.signed_url}
-                alt="Meme"
-                className="h-full w-full object-cover"
-                loading="lazy"
-              />
-            </button>
+            <FeedMediaStrip
+              memeSrc={post.signed_url}
+              originalSrc={post.original_signed_url}
+              onDoubleTapLike={handleLike}
+              memeOverlay={
+                <PostRecentLikersOnImage
+                  likers={recentLikers}
+                  likeCount={optimisticLike.count}
+                  onOpenList={() => setLikersOpen(true)}
+                />
+              }
+            />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-zinc-600">
               <Loader2 className="h-8 w-8 animate-spin" />
@@ -309,13 +323,8 @@ export function FeedCard({
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
             <button
               type="button"
-              onClick={() =>
-                document.getElementById(`comments-${post.id}`)?.scrollIntoView({
-                  behavior: "smooth",
-                  block: "start",
-                })
-              }
-              aria-label="Zu den Kommentaren scrollen"
+              onClick={scrollToCommentsAndFocusComposer}
+              aria-label="Kommentar schreiben"
               className="flex h-10 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
             >
               <MessageCircle className="h-5 w-5" />
@@ -453,6 +462,7 @@ export function FeedCard({
           <CommentThread
             postId={post.id}
             currentUserId={currentUserId}
+            composerRef={commentComposerRef}
             onCommentAdded={() => onCommentCountChange(post.id, 1)}
             onCommentDeleted={() => onCommentCountChange(post.id, -1)}
           />

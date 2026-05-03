@@ -5,6 +5,54 @@ import { createClient } from "@/lib/supabase/server";
 
 const PAGE_SIZE = 10;
 
+/** Neueste Liker zuerst; max. so viele für die Bild-Vorschau. */
+const RECENT_LIKERS_PREVIEW = 4;
+
+type PostLikeJoinRow = {
+  post_id: string;
+  user_id: string;
+  created_at: string;
+  users: unknown;
+};
+
+export interface PostLiker {
+  user_id: string;
+  username: string;
+  avatar_url: string | null;
+}
+
+function likerFromJoinRow(row: { user_id: string; users: unknown }): PostLiker {
+  const rawUser = row.users;
+  const userInfo = Array.isArray(rawUser) ? rawUser[0] : rawUser;
+  return {
+    user_id: row.user_id,
+    username: (userInfo as PostUser | null)?.username ?? "Unbekannt",
+    avatar_url: (userInfo as PostUser | null)?.avatar_url ?? null,
+  };
+}
+
+/** Gruppiert Like-Zeilen pro Post, sortiert nach `created_at` absteigend, je Post max. vier Einträge. */
+function buildRecentLikersByPostId(rows: PostLikeJoinRow[]): Map<string, PostLiker[]> {
+  const byPost = new Map<string, PostLikeJoinRow[]>();
+  for (const row of rows) {
+    const list = byPost.get(row.post_id) ?? [];
+    list.push(row);
+    byPost.set(row.post_id, list);
+  }
+  const out = new Map<string, PostLiker[]>();
+  for (const [postId, list] of byPost) {
+    list.sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+    out.set(
+      postId,
+      list.slice(0, RECENT_LIKERS_PREVIEW).map(likerFromJoinRow),
+    );
+  }
+  return out;
+}
+
 export interface PostUser {
   username: string;
   avatar_url: string | null;
@@ -28,6 +76,8 @@ export interface PostWithDetails {
   liked_by_me: boolean;
   comment_count: number;
   signed_url: string | null;
+  /** Bis zu vier neueste Liker (neueste zuerst), für Avatar-Stapel auf dem Meme. */
+  recent_likers: PostLiker[];
 }
 
 export interface CommentUser {
@@ -76,7 +126,12 @@ export async function fetchPostsAction(
     const postIds = postsRaw.map((p) => p.id);
 
     const [{ data: likesRaw }, { data: commentsRaw }] = await Promise.all([
-      supabase.from("post_likes").select("post_id, user_id").in("post_id", postIds),
+      supabase
+        .from("post_likes")
+        .select(
+          "post_id, user_id, created_at, users!user_id(username, avatar_url)",
+        )
+        .in("post_id", postIds),
       supabase.from("comments").select("post_id").in("post_id", postIds),
     ]);
 
@@ -122,6 +177,10 @@ export async function fetchPostsAction(
       if (like.user_id === user.id) likedByMeSet.add(like.post_id);
     }
 
+    const recentLikersByPost = buildRecentLikersByPostId(
+      (likesRaw ?? []) as PostLikeJoinRow[],
+    );
+
     const commentCountMap: Record<string, number> = {};
     for (const c of commentsRaw ?? []) {
       commentCountMap[c.post_id] = (commentCountMap[c.post_id] ?? 0) + 1;
@@ -152,6 +211,7 @@ export async function fetchPostsAction(
         liked_by_me: likedByMeSet.has(p.id),
         comment_count: commentCountMap[p.id] ?? 0,
         signed_url: p.meme_image_url ? (signedUrlMap[p.meme_image_url] ?? null) : null,
+        recent_likers: recentLikersByPost.get(p.id) ?? [],
       };
     });
 
@@ -224,7 +284,12 @@ export async function fetchUnseenPostsAction(
     const [{ data: usersData }, { data: likesRaw }, { data: commentsRaw }, { data: postExtras }] =
       await Promise.all([
         supabase.from("users").select("id, username, avatar_url").in("id", userIds),
-        supabase.from("post_likes").select("post_id, user_id").in("post_id", postIds),
+        supabase
+          .from("post_likes")
+          .select(
+            "post_id, user_id, created_at, users!user_id(username, avatar_url)",
+          )
+          .in("post_id", postIds),
         supabase.from("comments").select("post_id").in("post_id", postIds),
         supabase
           .from("posts")
@@ -302,6 +367,10 @@ export async function fetchUnseenPostsAction(
       if (like.user_id === user.id) likedByMeSet.add(like.post_id);
     }
 
+    const recentLikersByPost = buildRecentLikersByPostId(
+      (likesRaw ?? []) as PostLikeJoinRow[],
+    );
+
     const commentCountMap: Record<string, number> = {};
     for (const c of commentsRaw ?? []) {
       commentCountMap[c.post_id] = (commentCountMap[c.post_id] ?? 0) + 1;
@@ -331,6 +400,7 @@ export async function fetchUnseenPostsAction(
         liked_by_me: likedByMeSet.has(p.id),
         comment_count: commentCountMap[p.id] ?? 0,
         signed_url: p.meme_image_url ? (signedUrlMap[p.meme_image_url] ?? null) : null,
+        recent_likers: recentLikersByPost.get(p.id) ?? [],
       };
     });
 
@@ -420,7 +490,11 @@ export async function fetchPostDetailAction(
     }
 
     const [{ data: likesRaw }, { data: commentsRaw }] = await Promise.all([
-      supabase.from("post_likes").select("post_id, user_id").eq("post_id", postId),
+      supabase
+        .from("post_likes")
+        .select("user_id, created_at, users!user_id(username, avatar_url)")
+        .eq("post_id", postId)
+        .order("created_at", { ascending: false }),
       supabase.from("comments").select("post_id").eq("post_id", postId),
     ]);
 
@@ -445,12 +519,12 @@ export async function fetchPostDetailAction(
       originalSignedUrl = signedOrig?.[0]?.signedUrl ?? null;
     }
 
-    let like_count = 0;
-    let liked_by_me = false;
-    for (const like of likesRaw ?? []) {
-      like_count++;
-      if (like.user_id === user.id) liked_by_me = true;
-    }
+    const likeRows = likesRaw ?? [];
+    const like_count = likeRows.length;
+    const liked_by_me = likeRows.some((like) => like.user_id === user.id);
+    const recent_likers: PostLiker[] = likeRows
+      .slice(0, RECENT_LIKERS_PREVIEW)
+      .map((row) => likerFromJoinRow(row));
 
     const rawUser = p.users;
     const userInfo = Array.isArray(rawUser) ? rawUser[0] : rawUser;
@@ -480,6 +554,7 @@ export async function fetchPostDetailAction(
       liked_by_me,
       comment_count: (commentsRaw ?? []).length,
       signed_url: signedUrl,
+      recent_likers,
     };
 
     return { post };
@@ -487,12 +562,6 @@ export async function fetchPostDetailAction(
     console.error("[fetchPostDetailAction]", err);
     return { post: null, error: "Fehler beim Laden des Posts" };
   }
-}
-
-export interface PostLiker {
-  user_id: string;
-  username: string;
-  avatar_url: string | null;
 }
 
 /** Projektmitglieder: Liste der Nutzer, die diesen Post geliked haben (neueste zuerst). */
@@ -515,15 +584,7 @@ export async function fetchPostLikersAction(
     if (error) return { likers: [], error: error.message };
     if (!rows?.length) return { likers: [] };
 
-    const likers: PostLiker[] = rows.map((row) => {
-      const rawUser = row.users;
-      const userInfo = Array.isArray(rawUser) ? rawUser[0] : rawUser;
-      return {
-        user_id: row.user_id,
-        username: (userInfo as PostUser | null)?.username ?? "Unbekannt",
-        avatar_url: (userInfo as PostUser | null)?.avatar_url ?? null,
-      };
-    });
+    const likers: PostLiker[] = rows.map((row) => likerFromJoinRow(row));
 
     return { likers };
   } catch (err) {
@@ -534,13 +595,19 @@ export async function fetchPostLikersAction(
 
 export async function togglePostLikeAction(
   postId: string,
-): Promise<{ liked: boolean; like_count: number; error?: string }> {
+): Promise<{
+  liked: boolean;
+  like_count: number;
+  recent_likers: PostLiker[];
+  error?: string;
+}> {
   try {
     const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return { liked: false, like_count: 0, error: "Nicht angemeldet" };
+    if (!user)
+      return { liked: false, like_count: 0, recent_likers: [], error: "Nicht angemeldet" };
 
     const { data: existing } = await supabase
       .from("post_likes")
@@ -564,10 +631,26 @@ export async function togglePostLikeAction(
       .select("*", { count: "exact", head: true })
       .eq("post_id", postId);
 
-    return { liked: !existing, like_count: count ?? 0 };
+    const { data: recentRows } = await supabase
+      .from("post_likes")
+      .select("user_id, created_at, users!user_id(username, avatar_url)")
+      .eq("post_id", postId)
+      .order("created_at", { ascending: false })
+      .limit(RECENT_LIKERS_PREVIEW);
+
+    const recent_likers: PostLiker[] = (recentRows ?? []).map((row) =>
+      likerFromJoinRow(row),
+    );
+
+    return { liked: !existing, like_count: count ?? 0, recent_likers };
   } catch (err) {
     console.error("[togglePostLikeAction]", err);
-    return { liked: false, like_count: 0, error: "Fehler beim Liken" };
+    return {
+      liked: false,
+      like_count: 0,
+      recent_likers: [],
+      error: "Fehler beim Liken",
+    };
   }
 }
 
