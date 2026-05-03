@@ -1,6 +1,25 @@
 /**
- * Experimentelle Master-Prompt-Zusätze (KI-Vollbild) — ergänzen den Basis-Prompt, ersetzen ihn nicht.
+ * Experimentelle Master-Prompt-Zusätze (KI-Vollbild) — ergänzen den experimentellen Basis-Prompt, ersetzen ihn nicht.
+ * Der Standard-Modus nutzt einen separaten, in process-job definierten Basis-Text.
  */
+
+/** Vollbild-KI: fester Basistext im Standard-Modus (ohne Stil-Zusätze). */
+export const STANDARD_AI_MEME_BASE_PROMPT =
+  "Verwandle dieses Foto in ein lustiges, teilbares Meme im Stil deutschsprachiger Internet-Memes. " +
+  "Behalte wiedererkennbare Motive aus dem Foto. " +
+  "Nutze witzige visuelle Effekte, klassische Meme-Textleisten oder humorvolle Verfremdungen. " +
+  "Stil: knalliger Internet-Meme-Look. Alle sichtbaren Texte, Überschriften und Beschriftungen auf dem Bild müssen auf Deutsch formuliert sein (natürliche deutsche Meme-Sprache, Umgangssprache erlaubt).";
+
+/**
+ * Vollbild-KI: eigener Basistext für experimentelle Master-Stile — weniger grell, stärker an gängigen Format-Ideen orientiert.
+ */
+export const EXPERIMENTAL_AI_MEME_BASE_PROMPT =
+  "Verwandle dieses Foto in ein witziges, teilbares Meme. Lass dich von verbreiteten Internet-Meme-Formaten inspirieren " +
+  "(z. B. Setup–Pointe mit zwei Ebenen, Kontrast oder Vorher–Nachher, beschriftete Figuren oder Pfeile, Reaktions-/Zoom-Fokus, " +
+  "einfache Panels oder kurze Story in wenigen Bildelementen) — setze das eigenständig und überraschend um, keine 1:1-Nachahmung bekannter Vorlagen. " +
+  "Behalte wiedererkennbare Motive aus dem Foto. Ton: humorvoll und pointiert, klar lesbar; lieber zurückhaltende Farben und klare Komposition statt übersättigt oder kitschig grell. " +
+  "Text auf dem Bild nur dort, wo er den Witz trägt. Alle sichtbaren Texte, Überschriften und Beschriftungen ausschließlich auf Deutsch (natürliche Meme-/Umgangssprache).";
+
 export const STANDARD_AI_MASTER_KEY = "standard";
 
 /** Sentinel: Post-spezifische Rotation zwischen experimentellen Stilen */
@@ -90,6 +109,19 @@ export const MEME_FORMAT_TAXONOMY: readonly string[] = [
   "Surreale Collage / absurder Mix",
   "Tier-Meme / anthropomorph",
   "„Me vs. …“ Spaltung",
+  "Distracted boyfriend / Ablenkung: eigentliches Ziel vs. neuer Fokus",
+  "Zwei-Buttons / schwitzender Entscheidungs-Struggle",
+  "Stonks / absurde Wirtschafts- oder Erfolgs-Logik",
+  "Woman–cat / lautstarkes Genervt-sein vs. unschuldig-trockene Antwort",
+  "Trade offer / Tausch: ich biete X, du lieferst Y",
+  "Always has been / Pistol-Panel – Kurswechsel, war schon immer so",
+  "Wojak / Feels: hohle Maske vs. echtes Gefühl",
+  "This is fine / entspannt im Chaos (alles brennt)",
+  "POV / Ich-wenn… – Ich-erst-person-Szenario aus Nutzersicht",
+  "„Nobody: / Literally niemand: / …:“ – Setup aus dem Nichts",
+  "How it started / how it's going – Zeit- oder Erwartungskontrast",
+  "Clown-Makeup / Eskalation in mehreren Stufen zum Selbstzitat",
+  "Venn / Mengen – Überschneidung als Witz (nicht nur Chart)",
 ];
 
 export function memeFormatTaxonomyBlock(): string {

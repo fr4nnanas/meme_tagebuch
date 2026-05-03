@@ -27,11 +27,25 @@ export function buildProjectFeedUrl(projectId: string): string {
 
 export type ShareOutcome =
   | "shared"
+  | "downloaded"
   | "clipboard"
   | "cancelled"
   | "unavailable";
 
-/** Meme als Bilddatei und/oder mit Link zum Profil teilen. */
+function downloadBlobAsFile(blob: Blob, filename: string): void {
+  if (typeof document === "undefined") return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Meme nur als Bilddatei teilen (ohne URL oder Profil-Link im System-Dialog). */
 export async function shareMemeFromPost(options: {
   imageUrl: string | null;
   username: string;
@@ -39,50 +53,59 @@ export async function shareMemeFromPost(options: {
   caption: string | null;
 }): Promise<ShareOutcome> {
   const title = `Meme von ${options.username}`;
-  const profileUrl = buildProfileUrl(options.userId);
-  const textParts = [
-    options.caption?.trim() || undefined,
-    profileUrl ? `Profil: ${profileUrl}` : undefined,
-  ].filter(Boolean);
-  const text = textParts.join("\n\n");
+  let imageBlob: Blob | null = null;
 
   if (options.imageUrl && typeof navigator !== "undefined") {
     try {
       const res = await fetch(options.imageUrl);
       if (res.ok) {
-        const blob = await res.blob();
-        const ext = blob.type.includes("png") ? "png" : "jpeg";
-        const file = new File([blob], `meme-${options.userId.slice(0, 8)}.${ext}`, {
-          type: blob.type || "image/jpeg",
-        });
-        const withFiles: ShareData = { title, text, url: profileUrl, files: [file] };
-        if (
-          typeof navigator.canShare === "function" &&
-          navigator.canShare(withFiles)
-        ) {
-          try {
-            await navigator.share(withFiles);
-            return "shared";
-          } catch (e) {
-            if ((e as Error).name === "AbortError") return "cancelled";
+        imageBlob = await res.blob();
+        const ext = imageBlob.type.includes("png") ? "png" : "jpeg";
+        const file = new File(
+          [imageBlob],
+          `meme-${options.userId.slice(0, 8)}.${ext}`,
+          { type: imageBlob.type || "image/jpeg" },
+        );
+
+        const tryShareFiles = async (data: ShareData): Promise<boolean> => {
+          if (
+            typeof navigator.canShare === "function" &&
+            !navigator.canShare(data)
+          ) {
+            return false;
           }
+          try {
+            await navigator.share(data);
+            return true;
+          } catch (e) {
+            if ((e as Error).name === "AbortError") throw e;
+            return false;
+          }
+        };
+
+        try {
+          if (await tryShareFiles({ title, files: [file] })) return "shared";
+        } catch (e) {
+          if ((e as Error).name === "AbortError") return "cancelled";
+        }
+
+        try {
+          if (await tryShareFiles({ files: [file] })) return "shared";
+        } catch (e) {
+          if ((e as Error).name === "AbortError") return "cancelled";
         }
       }
     } catch {
-      /* ohne Bild weiter */
+      /* Fetch fehlgeschlagen — unten ggf. unavailable */
     }
   }
 
-  if (isWebShareAvailable()) {
-    try {
-      await navigator.share({ title, text, url: profileUrl });
-      return "shared";
-    } catch (e) {
-      if ((e as Error).name === "AbortError") return "cancelled";
-    }
+  if (imageBlob && typeof document !== "undefined") {
+    const ext = imageBlob.type.includes("png") ? "png" : "jpeg";
+    downloadBlobAsFile(imageBlob, `meme-${options.userId.slice(0, 8)}.${ext}`);
+    return "downloaded";
   }
 
-  if (await copyToClipboard(profileUrl)) return "clipboard";
   return "unavailable";
 }
 

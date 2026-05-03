@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AlertCircle } from "lucide-react";
+import { AppLogo } from "@/components/shared/app-logo";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { RegisterForm } from "./register-form";
 
@@ -27,6 +28,7 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
     <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-900 px-6 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
+          <AppLogo className="mx-auto mb-6 rounded-2xl shadow-lg shadow-black/40" />
           <h1 className="text-3xl font-bold text-zinc-100">Registrieren</h1>
           <p className="mt-2 text-sm text-zinc-400">
             Lege ein Konto nur mit Benutzername und Passwort an.

@@ -167,8 +167,9 @@ export function UnseenFeedContent({
       </header>
 
       <p className="mt-3 px-4 text-sm text-zinc-500">
-        Memes, die du im Feed noch nicht gesehen hast, erscheinen hier. Sobald du sie im Feed oder
-        hier ansiehst, gelten sie als gelesen.
+        Ungesehene Memes im Feed und Memes mit neuen Kommentaren anderer seit deinem letzten Lesen.
+        Scrollen oder Öffnen aktualisiert den Stand; „Alles als gesehen“ markiert alle Memes des
+        Projekts.
       </p>
 
       <div className="mt-4 px-4">

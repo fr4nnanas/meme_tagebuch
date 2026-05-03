@@ -2,8 +2,10 @@ import OpenAI from "openai";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import {
   experimentalPromptInset,
+  EXPERIMENTAL_AI_MEME_BASE_PROMPT,
   resolveAiMasterStyleKey,
   STANDARD_AI_MASTER_KEY,
+  STANDARD_AI_MEME_BASE_PROMPT,
 } from "@/lib/meme/ai-meme-master-styles";
 import {
   canvasSystemPromptInset,
@@ -201,12 +203,12 @@ async function buildAiMemePrompt(
     .maybeSingle();
 
   const styleExtra = experimentalPromptInset(resolvedMasterStyleKey);
+  const baseCore =
+    resolvedMasterStyleKey === STANDARD_AI_MASTER_KEY
+      ? STANDARD_AI_MEME_BASE_PROMPT
+      : EXPERIMENTAL_AI_MEME_BASE_PROMPT;
   const basePrompt =
-    "Verwandle dieses Foto in ein lustiges, teilbares Meme im Stil deutschsprachiger Internet-Memes. " +
-    "Behalte wiedererkennbare Motive aus dem Foto. " +
-    "Nutze witzige visuelle Effekte, klassische Meme-Textleisten oder humorvolle Verfremdungen. " +
-    "Stil: knalliger Internet-Meme-Look. Alle sichtbaren Texte, Überschriften und Beschriftungen auf dem Bild müssen auf Deutsch formuliert sein (natürliche deutsche Meme-Sprache, Umgangssprache erlaubt)." +
-    (styleExtra ? ` ${styleExtra}` : "");
+    baseCore + (styleExtra ? ` ${styleExtra}` : "");
 
   const normalized = normalizeStoredProjectAiContext(project?.ai_prompt_context);
   const contextPart = inlineImageEditProjectContext(normalized);

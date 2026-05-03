@@ -186,8 +186,8 @@ export function FeedCard({
       });
       if (outcome === "shared") {
         toast.success("Geteilt.");
-      } else if (outcome === "clipboard") {
-        toast.success("Profil-Link in die Zwischenablage kopiert.");
+      } else if (outcome === "downloaded") {
+        toast.success("Bild wurde heruntergeladen.");
       } else if (outcome === "unavailable") {
         toast.error("Teilen wird hier nicht unterstützt.");
       }
