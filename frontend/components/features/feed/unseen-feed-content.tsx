@@ -2,22 +2,21 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { Inbox, Loader2, RefreshCw } from "lucide-react";
+import { ChevronLeft, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useActiveProject } from "@/components/features/app/project-context";
-import {
-  fetchPostsAction,
-  fetchUnseenCountAction,
-  type PostWithDetails,
-} from "@/lib/actions/feed";
+import { fetchUnseenPostsAction, type PostWithDetails } from "@/lib/actions/feed";
 import { FeedCard } from "./feed-card";
 
-interface FeedContentProps {
+interface UnseenFeedContentProps {
   currentUserId: string;
   isAdmin?: boolean;
 }
 
-export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps) {
+export function UnseenFeedContent({
+  currentUserId,
+  isAdmin = false,
+}: UnseenFeedContentProps) {
   const { activeProjectId, activeProject } = useActiveProject();
   const [posts, setPosts] = useState<PostWithDetails[]>([]);
   const [page, setPage] = useState(0);
@@ -25,18 +24,12 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, startLoadMoreTransition] = useTransition();
   const loadedProjectRef = useRef<string | null>(null);
-  const [unseenCount, setUnseenCount] = useState(0);
-
-  const refreshUnseenCount = useCallback(async (projectId: string) => {
-    const r = await fetchUnseenCountAction(projectId);
-    if (!r.error) setUnseenCount(r.count);
-  }, []);
 
   const loadPosts = useCallback(
     async (projectId: string, targetPage: number, append: boolean) => {
       setIsLoading(true);
       try {
-        const result = await fetchPostsAction(projectId, targetPage);
+        const result = await fetchUnseenPostsAction(projectId, targetPage);
         if (result.error) {
           toast.error(result.error);
           return;
@@ -44,17 +37,13 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
         setPosts((prev) => (append ? [...prev, ...result.posts] : result.posts));
         setHasMore(result.hasMore);
         setPage(targetPage);
-        void refreshUnseenCount(projectId);
       } finally {
         setIsLoading(false);
       }
     },
-    [refreshUnseenCount],
+    [],
   );
 
-  // Wenn sich das aktive Projekt ändert, Feed neu laden.
-  // useEffect ist hier zwingend nötig, da activeProjectId client-seitiger State ist
-  // und nicht in einer Server Component ausgelesen werden kann.
   useEffect(() => {
     if (!activeProjectId) return;
     if (loadedProjectRef.current === activeProjectId) return;
@@ -90,10 +79,9 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
     );
   }
 
-  function handleMarkedViewedFeed() {
-    if (!activeProjectId) return;
-    void refreshUnseenCount(activeProjectId);
-  }
+  const handleMarkedViewed = useCallback((postId: string) => {
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+  }, []);
 
   function handleRefresh() {
     if (!activeProjectId) return;
@@ -116,89 +104,68 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
 
   return (
     <div className="flex flex-col pb-6">
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 pt-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Feed</h1>
-          {activeProject && (
-            <p className="mt-0.5 text-sm text-zinc-500">{activeProject.name}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {unseenCount > 0 && (
-            <Link
-              href="/feed/verpasst"
-              className="relative flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-orange-400"
-              aria-label={`Verpasste Memes: ${unseenCount} ungesehen`}
-            >
-              <Inbox className="h-5 w-5" />
-              <span className="absolute -right-0.5 -top-0.5 flex min-w-[1.1rem] items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-bold text-white">
-                {unseenCount > 99 ? "99+" : unseenCount}
-              </span>
-            </Link>
-          )}
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={isLoading}
-            aria-label="Feed aktualisieren"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-40"
+      <header className="flex items-center justify-between gap-2 px-4 pt-6">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Link
+            href="/feed"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+            aria-label="Zurück zum Feed"
           >
-            <RefreshCw className={`h-5 w-5 ${isLoading ? "animate-spin" : ""}`} />
-          </button>
+            <ChevronLeft className="h-5 w-5" />
+          </Link>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
+              Verpasste Memes
+            </h1>
+            {activeProject && (
+              <p className="mt-0.5 truncate text-sm text-zinc-500">{activeProject.name}</p>
+            )}
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={isLoading}
+          aria-label="Liste aktualisieren"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-40"
+        >
+          <RefreshCw className={`h-5 w-5 ${isLoading ? "animate-spin" : ""}`} />
+        </button>
       </header>
 
-      {unseenCount > 0 && (
-        <Link
-          href="/feed/verpasst"
-          className="mx-4 mt-3 flex items-center justify-between gap-3 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-left text-sm text-orange-200 transition-colors hover:bg-orange-500/15"
-        >
-          <span>
-            <strong className="font-semibold text-orange-100">{unseenCount}</strong>{" "}
-            {unseenCount === 1 ? "Meme hast" : "Memes hast"} du noch nicht gesehen —{" "}
-            <span className="text-orange-300 underline underline-offset-2">Entdeckung öffnen</span>
-          </span>
-          <Inbox className="h-5 w-5 shrink-0 text-orange-400" aria-hidden />
-        </Link>
-      )}
+      <p className="mt-3 px-4 text-sm text-zinc-500">
+        Memes, die du im Feed noch nicht lange genug gesehen hast, erscheinen hier. Sobald du
+        sie im Feed oder hier ansiehst, gelten sie als gelesen.
+      </p>
 
-      {/* Loading skeleton */}
       {isLoading && posts.length === 0 && (
         <div className="mt-6 flex flex-col gap-6 px-4">
-          {[1, 2, 3].map((i) => (
+          {[1, 2].map((i) => (
             <div
               key={i}
               className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-800"
             >
-              <div className="flex items-center gap-3 px-4 py-3">
-                <div className="h-9 w-9 animate-pulse rounded-full bg-zinc-800" />
-                <div className="space-y-1.5">
-                  <div className="h-3 w-24 animate-pulse rounded bg-zinc-800" />
-                  <div className="h-2 w-16 animate-pulse rounded bg-zinc-800" />
-                </div>
-              </div>
               <div className="aspect-[2/3] w-full animate-pulse bg-zinc-800" />
-              <div className="flex gap-4 px-4 py-3">
-                <div className="h-5 w-14 animate-pulse rounded bg-zinc-800" />
-                <div className="h-5 w-14 animate-pulse rounded bg-zinc-800" />
-              </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Empty state */}
       {!isLoading && posts.length === 0 && (
-        <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
-          <p className="text-zinc-400">Noch keine Memes in diesem Projekt.</p>
+        <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+          <p className="text-zinc-400">Du bist auf dem neuesten Stand.</p>
           <p className="mt-2 text-sm text-zinc-500">
-            Sei der Erste und lade ein Meme hoch!
+            Keine ungesehenen Memes in diesem Projekt.
           </p>
+          <Link
+            href="/feed"
+            className="mt-6 text-sm font-medium text-orange-400 hover:text-orange-300"
+          >
+            Zum Feed
+          </Link>
         </div>
       )}
 
-      {/* Post list */}
       {posts.length > 0 && (
         <div className="mt-6 flex flex-col gap-6 px-4">
           {posts.map((post) => (
@@ -210,13 +177,12 @@ export function FeedContent({ currentUserId, isAdmin = false }: FeedContentProps
               onDeleted={handlePostDeleted}
               onCaptionUpdated={handleCaptionUpdated}
               onCommentCountChange={handleCommentCountChange}
-              onMarkedViewed={handleMarkedViewedFeed}
+              onMarkedViewed={handleMarkedViewed}
             />
           ))}
         </div>
       )}
 
-      {/* Load more */}
       {hasMore && (
         <div className="mt-6 flex justify-center px-4">
           <button

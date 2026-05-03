@@ -3,6 +3,8 @@ export interface JobStatusResponse {
   id: string;
   status: "pending" | "processing" | "completed" | "failed";
   postId: string | null;
+  /** ISO-Zeitstempel (jobs.updated_at) – z. B. für „hängt fest“-Hinweise */
+  jobUpdatedAt?: string;
   memeType?: "ai_generated" | "canvas_overlay";
   variantSignedUrls?: string[];
   variantPaths?: string[];

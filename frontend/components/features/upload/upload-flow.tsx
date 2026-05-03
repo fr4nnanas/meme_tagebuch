@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowLeft,
   Camera,
+  FlaskConical,
   ImagePlus,
   Loader2,
   PenLine,
@@ -13,27 +14,45 @@ import {
   Sparkles,
   Wand2,
 } from "lucide-react";
+import {
+  EXPERIMENTAL_AI_MASTER_STYLES,
+  ROTATING_EXPERIMENTAL_KEY,
+} from "@/lib/meme/ai-meme-master-styles";
 import { ImageCropper } from "@/components/features/upload/image-cropper";
 import { useJobContext } from "@/components/features/app/job-context";
-import { startMemeJob, getDailyAiQuota } from "@/lib/actions/upload";
+import {
+  startMemeJob,
+  getDailyAiQuota,
+  getMemeRetryDraftAction,
+  retryMemeJobFromDraftAction,
+} from "@/lib/actions/upload";
 import { useActiveProject } from "@/components/features/app/project-context";
 
 type Step = "select" | "crop" | "chooseMode" | "configure" | "submitting";
 
-/** Die drei Nutzer-Varianten (vor Detailschirm). */
-type PostingMode = "ai_full" | "text_overlay" | "fully_manual";
+/** Nutzer-Varianten vor dem Detail-Schirm (vierter Modus = experimenteller KI-Stil). */
+type PostingMode = "ai_full" | "ai_experiment" | "text_overlay" | "fully_manual";
 
 type MemeType = "ai_generated" | "canvas_overlay";
 type Pipeline = "direct" | "assisted" | "manual";
 
 function toMemeType(mode: PostingMode): MemeType {
-  return mode === "ai_full" ? "ai_generated" : "canvas_overlay";
+  return mode === "ai_full" || mode === "ai_experiment"
+    ? "ai_generated"
+    : "canvas_overlay";
 }
 
 function toPipeline(mode: PostingMode, selectedIdea: string | null): Pipeline {
   if (mode === "fully_manual") return "manual";
   if (selectedIdea?.trim()) return "assisted";
   return "direct";
+}
+
+/** Zurück aus DB-Feldern (Retry). */
+function postingModeFromDb(memeType: MemeType, pipeline: Pipeline): PostingMode {
+  if (memeType === "ai_generated") return "ai_full";
+  if (pipeline === "manual") return "fully_manual";
+  return "text_overlay";
 }
 
 interface GpsCoords {
@@ -77,6 +96,7 @@ function blobToBase64(blob: Blob): Promise<string> {
 
 const MODE_LABEL: Record<PostingMode, string> = {
   ai_full: "Neues Meme von der KI",
+  ai_experiment: "KI experimentell (Master-Prompts)",
   text_overlay: "Text auf mein Foto",
   fully_manual: "Alles selbst",
 };
@@ -91,8 +111,15 @@ function pushUploadHistoryStep(step: UploadHistoryStep) {
 
 export function UploadFlow() {
   const router = useRouter();
-  const { activeProjectId } = useActiveProject();
+  const searchParams = useSearchParams();
+  const { activeProjectId, setActiveProjectId } = useActiveProject();
   const { startJob } = useJobContext();
+
+  const [retryPostId, setRetryPostId] = useState<string | null>(null);
+  const [retryBootstrapError, setRetryBootstrapError] = useState<string | null>(
+    null,
+  );
+  const [isRetryLoading, setIsRetryLoading] = useState(false);
 
   const [step, setStep] = useState<Step>("select");
   const [imageSrc, setImageSrc] = useState<string | null>(null);
@@ -100,6 +127,9 @@ export function UploadFlow() {
   const [gps, setGps] = useState<GpsCoords | null>(null);
 
   const [postingMode, setPostingMode] = useState<PostingMode | null>(null);
+  const [experimentMasterChoice, setExperimentMasterChoice] = useState(
+    ROTATING_EXPERIMENTAL_KEY,
+  );
 
   const [userText, setUserText] = useState("");
   const [captions, setCaptions] = useState<string[]>([]);
@@ -108,6 +138,67 @@ export function UploadFlow() {
   const [dailyUsed, setDailyUsed] = useState<number | null>(null);
   const [dailyLimit, setDailyLimit] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const retrySessionDoneRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const rid = searchParams.get("retry");
+    if (!rid || retrySessionDoneRef.current === rid) return;
+
+    let cancelled = false;
+    setIsRetryLoading(true);
+    setRetryBootstrapError(null);
+
+    void (async () => {
+      const draft = await getMemeRetryDraftAction(rid);
+      if (cancelled) return;
+      if (!draft.ok) {
+        setRetryBootstrapError(draft.error);
+        toast.error(draft.error);
+        setIsRetryLoading(false);
+        return;
+      }
+
+      try {
+        const res = await fetch(draft.originalSignedUrl);
+        if (!res.ok) throw new Error("Bild konnte nicht geladen werden");
+        const blob = await res.blob();
+        if (cancelled) return;
+        setImageSrc(URL.createObjectURL(blob));
+        setCroppedBlob(blob);
+        setPostingMode(postingModeFromDb(draft.memeType, draft.pipeline));
+        const text = draft.pipelineInputText ?? "";
+        if (draft.pipeline === "assisted") {
+          setUserText("");
+          setSelectedCaption(text.trim() ? text : null);
+        } else {
+          setUserText(text);
+          setSelectedCaption(null);
+        }
+        setCaptions([]);
+        setGps(
+          draft.lat != null && draft.lng != null
+            ? { lat: draft.lat, lng: draft.lng }
+            : null,
+        );
+        setActiveProjectId(draft.projectId);
+        setRetryPostId(draft.postId);
+        retrySessionDoneRef.current = rid;
+        setStep("configure");
+        router.replace("/upload", { scroll: false });
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Retry konnte nicht geladen werden";
+        setRetryBootstrapError(msg);
+        toast.error(msg);
+      } finally {
+        if (!cancelled) setIsRetryLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, router, setActiveProjectId]);
 
   useEffect(() => {
     const onPopState = (event: PopStateEvent) => {
@@ -137,6 +228,7 @@ export function UploadFlow() {
       setUserText("");
       setCaptions([]);
       setSelectedCaption(null);
+      setRetryPostId(null);
     };
 
     window.addEventListener("popstate", onPopState);
@@ -161,6 +253,8 @@ export function UploadFlow() {
   }, [activeProjectId, step]);
 
   const handleFileSelect = useCallback(async (file: File) => {
+    setRetryPostId(null);
+    retrySessionDoneRef.current = null;
     const coords = await extractGps(file);
     setGps(coords);
     const dataUrl = await fileToDataUrl(file);
@@ -185,6 +279,7 @@ export function UploadFlow() {
         setUserText("");
         setCaptions([]);
         setSelectedCaption(null);
+        setExperimentMasterChoice(ROTATING_EXPERIMENTAL_KEY);
       }
       return mode;
     });
@@ -274,7 +369,17 @@ export function UploadFlow() {
       formData.append("lng", String(gps.lng));
     }
 
-    const result = await startMemeJob(formData);
+    if (postingMode === "ai_experiment") {
+      formData.append("aiMasterStyle", experimentMasterChoice);
+    }
+
+    if (retryPostId) {
+      formData.append("postId", retryPostId);
+    }
+
+    const result = retryPostId
+      ? await retryMemeJobFromDraftAction(formData)
+      : await startMemeJob(formData);
 
     if (result.error) {
       toast.error(result.error);
@@ -293,8 +398,10 @@ export function UploadFlow() {
     selectedCaption,
     userText,
     gps,
+    experimentMasterChoice,
     startJob,
     router,
+    retryPostId,
   ]);
 
   if (!activeProjectId) {
@@ -305,6 +412,23 @@ export function UploadFlow() {
           <br />
           Gehe zum Profil und wähle ein Projekt.
         </p>
+      </div>
+    );
+  }
+
+  if (isRetryLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-16">
+        <Loader2 className="h-9 w-9 animate-spin text-orange-500" />
+        <p className="text-sm text-zinc-400">Entwurf wird geladen…</p>
+      </div>
+    );
+  }
+
+  if (retryBootstrapError && step === "select" && !retryPostId) {
+    return (
+      <div className="rounded-xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+        {retryBootstrapError}
       </div>
     );
   }
@@ -486,6 +610,52 @@ export function UploadFlow() {
             Unlimitiert
           </span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => selectPostingMode("ai_experiment")}
+          disabled={isAiLimitReached}
+          className={`flex flex-col items-start gap-2 rounded-xl border-2 p-3.5 text-left transition-all ${
+            isAiLimitReached
+              ? "cursor-not-allowed border-zinc-700/80 bg-zinc-900/50 opacity-60"
+              : "border-cyan-600/55 bg-cyan-950/35 hover:border-cyan-500 hover:bg-cyan-950/55"
+          }`}
+        >
+          <div className="flex w-full gap-2.5">
+            <div
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                isAiLimitReached ? "bg-zinc-800" : "bg-cyan-500/20"
+              }`}
+            >
+              <FlaskConical
+                className={`h-5 w-5 ${
+                  isAiLimitReached ? "text-zinc-500" : "text-cyan-400"
+                }`}
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-zinc-100">
+                KI experimentell
+              </p>
+              <p className="mt-0.5 text-xs leading-snug text-zinc-400">
+                Hier experimentiert Franz mit dem Meme-Engine herum.
+              </p>
+            </div>
+          </div>
+          {isAiLimitReached ? (
+            <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[11px] font-medium text-red-400">
+              Tageslimit erreicht
+            </span>
+          ) : remainingAi !== null && dailyLimit !== null ? (
+            <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 text-[11px] text-cyan-300/90">
+              Wie KI-Vollbild: {remainingAi} von {dailyLimit} frei
+            </span>
+          ) : (
+            <span className="rounded-full bg-cyan-950/60 px-2 py-0.5 text-[11px] text-cyan-400/80">
+              Kontingent wird geladen…
+            </span>
+          )}
+        </button>
       </div>
     );
   }
@@ -506,6 +676,13 @@ export function UploadFlow() {
           Andere Variante wählen
         </button>
 
+        {retryPostId && (
+          <p className="rounded-xl border border-amber-500/35 bg-amber-950/45 px-3 py-2.5 text-xs leading-relaxed text-amber-100/90">
+            Entwurf erneut starten: Passe Text, Modus oder Zuschnitt an – der
+            Lauf ersetzt den bisherigen Status dieses Posts.
+          </p>
+        )}
+
         {imageSrc && (
           <div className="relative overflow-hidden rounded-xl border border-zinc-800">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -517,6 +694,8 @@ export function UploadFlow() {
             <button
               type="button"
               onClick={() => {
+                setRetryPostId(null);
+                retrySessionDoneRef.current = null;
                 window.history.go(-3);
               }}
               className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1.5 text-xs font-medium text-zinc-200 backdrop-blur-sm hover:bg-black/80"
@@ -594,17 +773,22 @@ export function UploadFlow() {
               type="button"
               onClick={() => void handleGenerateCaptions()}
               disabled={isLoadingCaptions || hintsLocked}
-              className="flex items-center justify-center gap-2 rounded-full bg-zinc-800 py-3 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-45"
+              className="flex flex-col items-center justify-center gap-0.5 rounded-full bg-zinc-800 px-4 py-3 text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-45"
             >
               {isLoadingCaptions ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="flex items-center gap-2 text-sm font-semibold">
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                   KI denkt nach...
-                </>
+                </span>
               ) : (
                 <>
-                  <RefreshCw className="h-4 w-4" />
-                  {captions.length > 0 ? "Neue Ideen generieren" : "Ideen generieren"}
+                  <span className="flex items-center gap-2 text-sm font-semibold">
+                    <RefreshCw className="h-4 w-4 shrink-0" />
+                    {captions.length > 0 ? "Neue Ideen generieren" : "Ideen generieren"}
+                  </span>
+                  <span className="text-[11px] font-normal leading-tight text-zinc-500">
+                    optional als Inspiration
+                  </span>
                 </>
               )}
             </button>
@@ -634,11 +818,38 @@ export function UploadFlow() {
           </div>
         )}
 
+        {postingMode === "ai_experiment" && (
+          <div className="rounded-xl border border-cyan-600/35 bg-cyan-950/30 px-3 py-2.5">
+            <p className="mb-2 text-xs leading-snug text-zinc-400">
+              Hier experimentiert Franz mit dem Meme-Engine herum.
+            </p>
+            <label className="sr-only" htmlFor="experiment-master-style">
+              Master-Prompt-Stil
+            </label>
+            <select
+              id="experiment-master-style"
+              value={experimentMasterChoice}
+              onChange={(e) => setExperimentMasterChoice(e.target.value)}
+              className="w-full rounded-lg border border-cyan-800/50 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-orange-500"
+            >
+              <option value={ROTATING_EXPERIMENTAL_KEY}>
+                Automatisch wechseln (Rotation je Meme)
+              </option>
+              {Object.entries(EXPERIMENTAL_AI_MASTER_STYLES).map(([key, meta]) => (
+                <option key={key} value={key}>
+                  {meta.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <button
           type="button"
           onClick={() => void handleSubmit()}
           disabled={
-            (postingMode === "ai_full" && isAiLimitReached) ||
+            ((postingMode === "ai_full" || postingMode === "ai_experiment") &&
+              isAiLimitReached) ||
             (pipeline === "assisted" &&
               captions.length > 0 &&
               !selectedCaption) ||

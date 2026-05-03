@@ -55,6 +55,8 @@ CREATE TABLE public.posts (
   overlay_text_bottom TEXT,
   -- Pipeline: 'direct', 'assisted' oder 'manual' (Text-Overlay nur Nutzertext)
   pipeline            TEXT NOT NULL CHECK (pipeline IN ('direct', 'assisted', 'manual')),
+  -- Effektiver Nutzertext beim Job-Start (Retry / Transparenz)
+  pipeline_input_text TEXT,
   -- Caption (manuell oder KI-generiert, nachträglich editierbar)
   caption             TEXT,
   -- GPS-Koordinaten aus EXIF-Daten (können NULL sein wenn kein GPS im Foto)

@@ -7,6 +7,7 @@ type JobRow = {
   status: string;
   post_id: string | null;
   error_msg: string | null;
+  updated_at?: string | null;
 };
 
 export async function buildJobStatusResponse(
@@ -17,6 +18,7 @@ export async function buildJobStatusResponse(
     id: job.id,
     status: job.status as JobStatusResponse["status"],
     postId: job.post_id,
+    ...(job.updated_at ? { jobUpdatedAt: job.updated_at } : {}),
   };
 
   if (job.status === "failed") {

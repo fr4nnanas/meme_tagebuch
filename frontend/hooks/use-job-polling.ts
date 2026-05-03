@@ -33,7 +33,9 @@ export function useJobPolling({
     isRunningRef.current = true;
 
     try {
-      const res = await fetch(`/api/meme/job-status/${jobId}`);
+      const res = await fetch(`/api/meme/job-status/${jobId}`, {
+        cache: "no-store",
+      });
       if (!res.ok) {
         isRunningRef.current = false;
         return;

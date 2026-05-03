@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useOptimistic, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import {
   Check,
   Heart,
@@ -15,6 +15,7 @@ import {
 import { toast } from "sonner";
 import {
   deletePostAction,
+  markPostViewedAction,
   togglePostLikeAction,
   updatePostCaptionAction,
   type PostWithDetails,
@@ -29,6 +30,8 @@ interface FeedCardProps {
   onDeleted: (postId: string) => void;
   onCaptionUpdated: (postId: string, caption: string) => void;
   onCommentCountChange: (postId: string, delta: number) => void;
+  /** Wird aufgerufen, sobald der Nutzer den Post im Feed sichtbar „gesehen“ hat. */
+  onMarkedViewed?: (postId: string) => void;
 }
 
 interface LikeState {
@@ -43,6 +46,7 @@ export function FeedCard({
   onDeleted,
   onCaptionUpdated,
   onCommentCountChange,
+  onMarkedViewed,
 }: FeedCardProps) {
   const isOwner = post.user_id === currentUserId;
   const canDelete = isOwner || isAdmin;
@@ -64,6 +68,31 @@ export function FeedCard({
   const [isSavingCaption, startSaveCaptionTransition] = useTransition();
   const [isDeletingPost, startDeleteTransition] = useTransition();
   const [isLiking, startLikeTransition] = useTransition();
+  const articleRef = useRef<HTMLElement>(null);
+  const viewTracked = useRef(false);
+
+  useEffect(() => {
+    const el = articleRef.current;
+    if (!el || !post.signed_url || viewTracked.current) return;
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.45) {
+            viewTracked.current = true;
+            io.disconnect();
+            void markPostViewedAction(post.id).then((res) => {
+              if (!res.error) onMarkedViewed?.(post.id);
+            });
+          }
+        }
+      },
+      { threshold: [0, 0.25, 0.45, 0.6, 1], rootMargin: "0px 0px -10% 0px" },
+    );
+
+    io.observe(el);
+    return () => io.disconnect();
+  }, [post.id, post.signed_url, onMarkedViewed]);
 
   function handleLike() {
     if (isLiking) return;
@@ -148,7 +177,10 @@ export function FeedCard({
 
   return (
     <>
-      <article className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-800">
+      <article
+        ref={articleRef}
+        className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-800"
+      >
         {/* Header: Avatar + Username + Menu */}
         <div className="flex items-center gap-3 px-4 py-3">
           <UserAvatarLightbox

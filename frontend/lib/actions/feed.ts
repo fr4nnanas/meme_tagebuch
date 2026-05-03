@@ -133,6 +133,170 @@ export async function fetchPostsAction(
   }
 }
 
+export async function fetchUnseenCountAction(
+  projectId: string,
+): Promise<{ count: number; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { count: 0, error: "Nicht angemeldet" };
+
+    const { data, error } = await supabase.rpc("feed_unseen_count", {
+      p_project_id: projectId,
+    });
+    if (error) return { count: 0, error: error.message };
+    return { count: Number(data ?? 0) };
+  } catch (err) {
+    console.error("[fetchUnseenCountAction]", err);
+    return { count: 0, error: "Fehler beim Zählen" };
+  }
+}
+
+export async function fetchUnseenPostsAction(
+  projectId: string,
+  page: number = 0,
+): Promise<{ posts: PostWithDetails[]; hasMore: boolean; error?: string }> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { posts: [], hasMore: false, error: "Nicht angemeldet" };
+
+    const from = page * PAGE_SIZE;
+    const { data: rows, error: rpcError } = await supabase.rpc(
+      "feed_unseen_posts_page",
+      {
+        p_project_id: projectId,
+        p_limit: PAGE_SIZE,
+        p_offset: from,
+      },
+    );
+
+    if (rpcError) return { posts: [], hasMore: false, error: rpcError.message };
+    if (!rows || rows.length === 0) return { posts: [], hasMore: false };
+
+    type UnseenRow = {
+      id: string;
+      user_id: string;
+      project_id: string;
+      caption: string | null;
+      meme_image_url: string | null;
+      meme_type: string;
+      created_at: string;
+    };
+    const unseenRows = rows as UnseenRow[];
+
+    const postIds = unseenRows.map((p) => p.id);
+    const userIds = [...new Set(unseenRows.map((p) => p.user_id))];
+
+    const [{ data: usersData }, { data: likesRaw }, { data: commentsRaw }] =
+      await Promise.all([
+        supabase.from("users").select("id, username, avatar_url").in("id", userIds),
+        supabase.from("post_likes").select("post_id, user_id").in("post_id", postIds),
+        supabase.from("comments").select("post_id").in("post_id", postIds),
+      ]);
+
+    const userMap = new Map(
+      (usersData ?? []).map((u) => [
+        u.id,
+        { username: u.username, avatar_url: u.avatar_url },
+      ]),
+    );
+
+    const memePaths = unseenRows
+      .filter((p) => p.meme_image_url)
+      .map((p) => p.meme_image_url as string);
+
+    const signedUrlMap: Record<string, string> = {};
+    if (memePaths.length > 0) {
+      const { data: signedUrls } = await supabase.storage
+        .from("memes")
+        .createSignedUrls(memePaths, 3600);
+      if (signedUrls) {
+        memePaths.forEach((path, i) => {
+          const su = signedUrls[i];
+          if (su?.signedUrl) signedUrlMap[path] = su.signedUrl;
+        });
+      }
+    }
+
+    const likeCountMap: Record<string, number> = {};
+    const likedByMeSet = new Set<string>();
+    for (const like of likesRaw ?? []) {
+      likeCountMap[like.post_id] = (likeCountMap[like.post_id] ?? 0) + 1;
+      if (like.user_id === user.id) likedByMeSet.add(like.post_id);
+    }
+
+    const commentCountMap: Record<string, number> = {};
+    for (const c of commentsRaw ?? []) {
+      commentCountMap[c.post_id] = (commentCountMap[c.post_id] ?? 0) + 1;
+    }
+
+    const posts: PostWithDetails[] = unseenRows.map((p) => {
+      const uinfo = userMap.get(p.user_id);
+      return {
+        id: p.id,
+        user_id: p.user_id,
+        project_id: p.project_id,
+        caption: p.caption,
+        meme_image_url: p.meme_image_url,
+        meme_type: p.meme_type,
+        created_at: p.created_at,
+        user: {
+          username: uinfo?.username ?? "Unbekannt",
+          avatar_url: uinfo?.avatar_url ?? null,
+        },
+        like_count: likeCountMap[p.id] ?? 0,
+        liked_by_me: likedByMeSet.has(p.id),
+        comment_count: commentCountMap[p.id] ?? 0,
+        signed_url: p.meme_image_url ? (signedUrlMap[p.meme_image_url] ?? null) : null,
+      };
+    });
+
+    return { posts, hasMore: unseenRows.length === PAGE_SIZE };
+  } catch (err) {
+    console.error("[fetchUnseenPostsAction]", err);
+    return { posts: [], hasMore: false, error: "Fehler beim Laden" };
+  }
+}
+
+export async function markPostViewedAction(
+  postId: string,
+): Promise<{ error?: string }> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Nicht angemeldet" };
+
+    const { data: postExists } = await supabase
+      .from("posts")
+      .select("id")
+      .eq("id", postId)
+      .maybeSingle();
+    if (!postExists) return { error: "Post nicht gefunden" };
+
+    const { error } = await supabase.from("post_views").upsert(
+      {
+        user_id: user.id,
+        post_id: postId,
+        viewed_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,post_id" },
+    );
+
+    if (error) return { error: error.message };
+    return {};
+  } catch (err) {
+    console.error("[markPostViewedAction]", err);
+    return { error: "Fehler beim Speichern" };
+  }
+}
+
 export async function fetchPostDetailAction(
   postId: string,
 ): Promise<{ post: PostWithDetails | null; error?: string }> {

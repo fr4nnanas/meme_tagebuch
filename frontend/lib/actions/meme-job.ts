@@ -32,7 +32,7 @@ export async function getJobStatusForPostAction(
 
     const { data: job } = await supabase
       .from("jobs")
-      .select("id, status, post_id, error_msg")
+      .select("id, status, post_id, error_msg, updated_at")
       .eq("post_id", postId)
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })

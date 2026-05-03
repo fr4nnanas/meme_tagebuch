@@ -1,6 +1,11 @@
 import OpenAI from "openai";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import {
+  experimentalPromptInset,
+  resolveAiMasterStyleKey,
+  STANDARD_AI_MASTER_KEY,
+} from "@/lib/meme/ai-meme-master-styles";
+import {
   canvasSystemPromptInset,
   inlineImageEditProjectContext,
   normalizeStoredProjectAiContext,
@@ -17,6 +22,8 @@ export interface ProcessJobParams {
   pipeline: "direct" | "assisted" | "manual";
   userText?: string;
   originalPath: string;
+  /** Rohwert aus dem Formular: Preset-Key, „rotate“ oder leer (Standard) */
+  aiMasterStyle?: string | null;
 }
 
 // error_msg-Feld wird bei status='completed' als Ergebnisspeicher zweckentfremdet.
@@ -27,6 +34,8 @@ export type JobResult =
       variantPaths: string[];
       /** Gespeicherter Nutzertext zur Reproduktion der zweiten Variante */
       userText?: string;
+      /** Aufgelöster Master-Stil (nach Rotation), damit Variante 2 denselben Prompt nutzt */
+      aiMasterStyle?: string;
     }
   | {
       type: "canvas_overlay";
@@ -183,6 +192,7 @@ async function buildAiMemePrompt(
   supabase: ReturnType<typeof createServiceRoleClient>,
   projectId: string,
   userText?: string,
+  resolvedMasterStyleKey: string = STANDARD_AI_MASTER_KEY,
 ): Promise<string> {
   const { data: project } = await supabase
     .from("projects")
@@ -190,11 +200,13 @@ async function buildAiMemePrompt(
     .eq("id", projectId)
     .maybeSingle();
 
+  const styleExtra = experimentalPromptInset(resolvedMasterStyleKey);
   const basePrompt =
     "Verwandle dieses Foto in ein lustiges, teilbares Meme im Stil deutschsprachiger Internet-Memes. " +
     "Behalte wiedererkennbare Motive aus dem Foto. " +
     "Nutze witzige visuelle Effekte, klassische Meme-Textleisten oder humorvolle Verfremdungen. " +
-    "Stil: knalliger Internet-Meme-Look. Alle sichtbaren Texte, Überschriften und Beschriftungen auf dem Bild müssen auf Deutsch formuliert sein (natürliche deutsche Meme-Sprache, Umgangssprache erlaubt).";
+    "Stil: knalliger Internet-Meme-Look. Alle sichtbaren Texte, Überschriften und Beschriftungen auf dem Bild müssen auf Deutsch formuliert sein (natürliche deutsche Meme-Sprache, Umgangssprache erlaubt)." +
+    (styleExtra ? ` ${styleExtra}` : "");
 
   const normalized = normalizeStoredProjectAiContext(project?.ai_prompt_context);
   const contextPart = inlineImageEditProjectContext(normalized);
@@ -214,10 +226,16 @@ async function generateAiMeme(
     type: "image/jpeg",
   });
 
+  const resolvedMasterKey = resolveAiMasterStyleKey(
+    params.aiMasterStyle ?? null,
+    params.postId,
+  );
+
   const prompt = await buildAiMemePrompt(
     supabase,
     params.projectId,
     params.userText,
+    resolvedMasterKey,
   );
 
   const response = await openai.images.edit({
@@ -256,6 +274,9 @@ async function generateAiMeme(
     type: "ai_generated",
     variantPaths: [v1Path],
     ...(params.userText ? { userText: params.userText } : {}),
+    ...(resolvedMasterKey !== STANDARD_AI_MASTER_KEY
+      ? { aiMasterStyle: resolvedMasterKey }
+      : {}),
   };
 }
 
@@ -307,6 +328,7 @@ export async function appendSecondAiVariantToJob(
     supabase,
     post.project_id,
     result.userText,
+    result.aiMasterStyle ?? STANDARD_AI_MASTER_KEY,
   );
 
   const response = await openai.images.edit({
@@ -340,6 +362,9 @@ export async function appendSecondAiVariantToJob(
     type: "ai_generated",
     variantPaths: [...result.variantPaths, v2Path],
     ...(result.userText !== undefined ? { userText: result.userText } : {}),
+    ...(result.aiMasterStyle !== undefined
+      ? { aiMasterStyle: result.aiMasterStyle }
+      : {}),
   };
 
   const { error: updateError } = await supabase

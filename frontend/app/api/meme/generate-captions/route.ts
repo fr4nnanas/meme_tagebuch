@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
+import { memeFormatTaxonomyBlock } from "@/lib/meme/ai-meme-master-styles";
 import {
   ideasPromptProjectContextBlock,
   loadProjectAiContextNormalized,
@@ -57,6 +58,11 @@ export async function POST(request: NextRequest) {
       projectContextBlock = ideasPromptProjectContextBlock(loaded.normalized);
     }
 
+    const taxonomyBlock = `
+
+Vorgegebene Meme-Formate/Typen (Taxonomie — für jeden Vorschlag mindestens eines davon aufgreifen oder klar zuordenbar machen; über alle vier Ideen verteilt verschiedene Formate nutzen):
+${memeFormatTaxonomyBlock()}`;
+
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -72,9 +78,11 @@ export async function POST(request: NextRequest) {
             },
             {
               type: "text",
-              text: `Analysiere dieses Bild und generiere 4 verschiedene, witzige Meme-Ideen dafür.${projectContextBlock}${hintsBlock}
+              text: `Analysiere dieses Bild und generiere 4 verschiedene, witzige Meme-Ideen dafür.${projectContextBlock}${hintsBlock}${taxonomyBlock}
+
 Antworte NUR mit einem JSON-Objekt: {"ideas": ["Idee 1", "Idee 2", "Idee 3", "Idee 4"]}
-Jede Idee ist eine kurze Beschreibung des Meme-Konzepts (max. 15 Wörter).
+Jede Idee ist eine kurze Beschreibung des Meme-Konzepts (max. 15 Wörter) und benennt in Klammern oder Kurzform das gewählte Format aus der Taxonomie (z. B. „… (Reaction Face)“).
+Vermeide vier nahezu gleiche Setups — nutze bewusst unterschiedliche Meme-Formate.
 Sei kreativ, humorvoll und originell. Formuliere alle vier Ideen ausschließlich auf Deutsch (deutscher Internet-Meme-Ton).`,
             },
           ],

@@ -3,12 +3,15 @@
 import { useActiveProject } from "@/components/features/app/project-context";
 import { ProjectExportButton } from "@/components/features/export/project-export-button";
 import { ProjectSelector } from "@/components/features/profile/project-selector";
+import { FeedNotificationSettings } from "@/components/features/settings/feed-notification-settings";
 
 export function StandardSettingsSection() {
   const { activeProjectId, activeProject } = useActiveProject();
 
   return (
     <div className="space-y-6">
+      <FeedNotificationSettings />
+
       <section className="space-y-2">
         <h2 className="text-sm font-medium text-zinc-400">Aktives Projekt</h2>
         <ProjectSelector />

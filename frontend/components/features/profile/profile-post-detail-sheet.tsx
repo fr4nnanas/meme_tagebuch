@@ -57,8 +57,11 @@ export function ProfilePostDetailSheet({
 }: ProfilePostDetailSheetProps) {
   const { markJobCompleted } = useJobContext();
   const recoveryFiredRef = useRef<string | null>(null);
-  const [memeWorkBanner, setMemeWorkBanner] = useState(false);
   const [memeJobError, setMemeJobError] = useState<string | null>(null);
+  const [jobPollDetail, setJobPollDetail] = useState<{
+    status: JobStatusResponse["status"];
+    jobUpdatedAt?: string;
+  } | null>(null);
 
   const [post, setPost] = useState<PostWithDetails | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -120,8 +123,8 @@ export function ProfilePostDetailSheet({
 
   useEffect(() => {
     recoveryFiredRef.current = null;
-    setMemeWorkBanner(false);
     setMemeJobError(null);
+    setJobPollDetail(null);
   }, [postId]);
 
   useEffect(() => {
@@ -144,12 +147,11 @@ export function ProfilePostDetailSheet({
       !isProfileOwner ||
       String(post.user_id) !== String(currentUserId)
     ) {
-      setMemeWorkBanner(false);
       setMemeJobError(null);
+      setJobPollDetail(null);
       return;
     }
 
-    setMemeWorkBanner(true);
     const p = post;
     let cancelled = false;
     let interval: ReturnType<typeof setInterval> | undefined;
@@ -160,22 +162,26 @@ export function ProfilePostDetailSheet({
 
       if (!res.ok) {
         setMemeJobError(res.error);
-        setMemeWorkBanner(false);
+        setJobPollDetail(null);
         return;
       }
 
       if ("noJob" in res && res.noJob) {
-        setMemeWorkBanner(true);
         setMemeJobError(null);
+        setJobPollDetail(null);
         return;
       }
 
       if (!("data" in res)) return;
       const d = res.data;
 
+      setJobPollDetail({
+        status: d.status,
+        jobUpdatedAt: d.jobUpdatedAt,
+      });
+
       if (d.status === "failed") {
         setMemeJobError(d.errorMsg ?? "Meme-Erstellung fehlgeschlagen");
-        setMemeWorkBanner(false);
         if (interval) clearInterval(interval);
         return;
       }
@@ -185,26 +191,23 @@ export function ProfilePostDetailSheet({
           recoveryFiredRef.current = p.id;
           markJobCompleted(d);
         }
-        setMemeWorkBanner(false);
         setMemeJobError(null);
+        setJobPollDetail(null);
         if (interval) clearInterval(interval);
         return;
       }
 
       if (d.status === "completed" && d.errorMsg) {
         setMemeJobError(d.errorMsg);
-        setMemeWorkBanner(false);
         if (interval) clearInterval(interval);
         return;
       }
 
       if (d.status === "pending" || d.status === "processing") {
-        setMemeWorkBanner(true);
         setMemeJobError(null);
         return;
       }
 
-      setMemeWorkBanner(true);
       setMemeJobError(null);
     }
 
@@ -298,6 +301,22 @@ export function ProfilePostDetailSheet({
       }).format(new Date(post.created_at))
     : "";
 
+  const isOwnerOfPipelinePost =
+    Boolean(
+      post &&
+        isProfileOwner &&
+        String(post.user_id) === String(currentUserId),
+    );
+  const pipelineStaleMs = 3 * 60 * 1000;
+  const pipelineUpdatedMs = jobPollDetail?.jobUpdatedAt
+    ? new Date(jobPollDetail.jobUpdatedAt).getTime()
+    : null;
+  const pipelineLooksStale =
+    pipelineUpdatedMs != null &&
+    Date.now() - pipelineUpdatedMs > pipelineStaleMs &&
+    (jobPollDetail?.status === "pending" ||
+      jobPollDetail?.status === "processing");
+
   return (
     <>
       <div
@@ -369,26 +388,58 @@ export function ProfilePostDetailSheet({
                 )}
               </div>
 
-              {!isLoadingDetail &&
-                post &&
-                !post.meme_image_url &&
-                (() => {
-                  const line =
-                    memeJobError ??
-                    (!isProfileOwner || memeWorkBanner
-                      ? "Meme-Erstellung noch in Arbeit"
-                      : null);
-                  if (!line) return null;
-                  return (
-                    <div className="border-b border-zinc-800 px-4 py-3">
-                      <p
-                        className={`text-center text-sm ${memeJobError ? "text-red-400" : "text-zinc-400"}`}
-                      >
-                        {line}
+              {!isLoadingDetail && post && !post.meme_image_url && (
+                <div className="border-b border-zinc-800 px-4 py-4">
+                  {memeJobError ? (
+                    <div className="space-y-3">
+                      <p className="text-center text-xs font-semibold uppercase tracking-wider text-red-400/90">
+                        Fehler bei der Meme-Erstellung
                       </p>
+                      <p className="text-center text-sm leading-relaxed text-red-200/95">
+                        {memeJobError}
+                      </p>
+                      {isOwnerOfPipelinePost && (
+                        <Link
+                          href={`/upload?retry=${post.id}`}
+                          onClick={onClose}
+                          className="flex h-11 w-full items-center justify-center rounded-full bg-orange-500 text-sm font-semibold text-white shadow-md transition-colors hover:bg-orange-400 active:scale-[0.99]"
+                        >
+                          Anpassen und erneut versuchen
+                        </Link>
+                      )}
                     </div>
-                  );
-                })()}
+                  ) : !isProfileOwner ? (
+                    <p className="text-center text-sm text-zinc-400">
+                      Meme-Erstellung noch in Arbeit
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-center text-sm text-zinc-300">
+                        {jobPollDetail?.status === "processing"
+                          ? "Die KI verarbeitet dein Bild …"
+                          : jobPollDetail?.status === "pending"
+                            ? "Dein Meme steht in der Warteschlange …"
+                            : "Meme-Erstellung läuft …"}
+                      </p>
+                      {pipelineLooksStale && (
+                        <>
+                          <p className="text-center text-xs leading-relaxed text-amber-400/95">
+                            Das dauert ungewöhnlich lange. Du kannst den Vorgang
+                            mit denselben Einstellungen erneut starten.
+                          </p>
+                          <Link
+                            href={`/upload?retry=${post.id}`}
+                            onClick={onClose}
+                            className="flex h-11 w-full items-center justify-center rounded-full border border-zinc-600 bg-zinc-800 text-sm font-semibold text-zinc-100 transition-colors hover:border-orange-500/60 hover:text-orange-300"
+                          >
+                            Bearbeiten und erneut starten
+                          </Link>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {!isLoadingDetail && post && (
                 <>
