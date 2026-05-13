@@ -21,10 +21,14 @@ import {
   Wand2,
 } from "lucide-react";
 import {
-  EXPERIMENTAL_AI_MASTER_STYLES,
+  EXPERIMENTAL_MEME_ART_STYLES,
+  EXPERIMENTAL_NAMED_MASTER_PROMPTS,
   ROTATING_EXPERIMENTAL_KEY,
+  encodeExperimentalMasterChoice,
+  encodeExperimentalMemeArtChoice,
 } from "@/lib/meme/ai-meme-master-styles";
 import { ImageCropper } from "@/components/features/upload/image-cropper";
+import { HorizontalSnapScroller } from "@/components/shared/horizontal-snap-scroller";
 import { useJobContext } from "@/components/features/app/job-context";
 import {
   startMemeJob,
@@ -110,9 +114,21 @@ const MODE_LABEL: Record<PostingMode, string> = {
 /** History-State für den Upload-Assistenten – Browser-Zurück = Wizard zurück statt Seite verlassen */
 type UploadHistoryStep = Exclude<Step, "select">;
 
-function pushUploadHistoryStep(step: UploadHistoryStep) {
+type UploadHistoryState = {
+  uploadStep: UploadHistoryStep;
+  cropSecond?: boolean;
+};
+
+function pushUploadHistoryStep(
+  step: UploadHistoryStep,
+  options?: { cropSecond?: boolean },
+) {
   if (typeof window === "undefined") return;
-  window.history.pushState({ uploadStep: step }, "", window.location.href);
+  const state: UploadHistoryState = { uploadStep: step };
+  if (step === "crop") {
+    state.cropSecond = Boolean(options?.cropSecond);
+  }
+  window.history.pushState(state, "", window.location.href);
 }
 
 export function UploadFlow() {
@@ -129,14 +145,21 @@ export function UploadFlow() {
 
   const [step, setStep] = useState<Step>("select");
   const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [secondImageSrc, setSecondImageSrc] = useState<string | null>(null);
+  const [cropSecondHistory, setCropSecondHistory] = useState(false);
   const [croppedBlob, setCroppedBlob] = useState<Blob | null>(null);
+  const [secondCroppedBlob, setSecondCroppedBlob] = useState<Blob | null>(null);
   /** Object-URL des Zuschnitts – Vorschau muss croppedBlob zeigen, nicht imageSrc (Original). */
   const [croppedPreviewUrl, setCroppedPreviewUrl] = useState<string | null>(
     null,
   );
+  const [secondCroppedPreviewUrl, setSecondCroppedPreviewUrl] = useState<
+    string | null
+  >(null);
   const [gps, setGps] = useState<GpsCoords | null>(null);
 
   const [postingMode, setPostingMode] = useState<PostingMode | null>(null);
+  const [experimentMemeArtKey, setExperimentMemeArtKey] = useState("");
   const [experimentMasterChoice, setExperimentMasterChoice] = useState(
     ROTATING_EXPERIMENTAL_KEY,
   );
@@ -218,10 +241,12 @@ export function UploadFlow() {
 
   useEffect(() => {
     const onPopState = (event: PopStateEvent) => {
-      const uploadStep = event.state?.uploadStep as UploadHistoryStep | undefined;
+      const historyState = event.state as UploadHistoryState | null;
+      const uploadStep = historyState?.uploadStep;
 
       if (uploadStep === "crop") {
         setStep("crop");
+        setCropSecondHistory(Boolean(historyState?.cropSecond));
         return;
       }
       if (uploadStep === "chooseMode") {
@@ -239,7 +264,10 @@ export function UploadFlow() {
 
       setStep("select");
       setImageSrc(null);
+      setSecondImageSrc(null);
+      setCropSecondHistory(false);
       setCroppedBlob(null);
+      setSecondCroppedBlob(null);
       setPostingMode(null);
       setUserText("");
       setCaptions([]);
@@ -250,6 +278,16 @@ export function UploadFlow() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
+
+  useLayoutEffect(() => {
+    if (!secondCroppedBlob) {
+      setSecondCroppedPreviewUrl(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(secondCroppedBlob);
+    setSecondCroppedPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [secondCroppedBlob]);
 
   useLayoutEffect(() => {
     if (!croppedBlob) {
@@ -280,23 +318,37 @@ export function UploadFlow() {
   const handleFileSelect = useCallback(async (file: File) => {
     setRetryPostId(null);
     retrySessionDoneRef.current = null;
+    setSecondImageSrc(null);
+    setCropSecondHistory(false);
+    setSecondCroppedBlob(null);
     const coords = await extractGps(file);
     setGps(coords);
     const dataUrl = await fileToDataUrl(file);
     setImageSrc(dataUrl);
     setStep("crop");
-    pushUploadHistoryStep("crop");
+    pushUploadHistoryStep("crop", { cropSecond: false });
   }, []);
 
-  const handleCropComplete = useCallback((blob: Blob) => {
-    setCroppedBlob(blob);
-    setPostingMode(null);
-    setUserText("");
-    setCaptions([]);
-    setSelectedCaption(null);
-    setStep("chooseMode");
-    pushUploadHistoryStep("chooseMode");
+  const handleSecondImageSelect = useCallback(async (file: File) => {
+    const dataUrl = await fileToDataUrl(file);
+    setSecondImageSrc(dataUrl);
+    setCropSecondHistory(true);
+    pushUploadHistoryStep("crop", { cropSecond: true });
   }, []);
+
+  const handleCropComplete = useCallback(
+    (blob: Blob, secondBlob?: Blob | null) => {
+      setCroppedBlob(blob);
+      setSecondCroppedBlob(secondBlob ?? null);
+      setPostingMode(null);
+      setUserText("");
+      setCaptions([]);
+      setSelectedCaption(null);
+      setStep("chooseMode");
+      pushUploadHistoryStep("chooseMode");
+    },
+    [],
+  );
 
   const selectPostingMode = useCallback((mode: PostingMode) => {
     setPostingMode((prev) => {
@@ -325,6 +377,9 @@ export function UploadFlow() {
 
     try {
       const base64 = await blobToBase64(croppedBlob);
+      const secondBase64 = secondCroppedBlob
+        ? await blobToBase64(secondCroppedBlob)
+        : null;
       const hints = userText.trim();
       const res = await fetch("/api/meme/generate-captions", {
         method: "POST",
@@ -332,6 +387,7 @@ export function UploadFlow() {
         body: JSON.stringify({
           projectId: activeProjectId,
           imageBase64: base64,
+          ...(secondBase64 ? { secondImageBase64: secondBase64 } : {}),
           ...(hints ? { hints } : {}),
         }),
       });
@@ -350,7 +406,7 @@ export function UploadFlow() {
     } finally {
       setIsLoadingCaptions(false);
     }
-  }, [croppedBlob, userText, activeProjectId, selectedCaption]);
+  }, [croppedBlob, secondCroppedBlob, userText, activeProjectId, selectedCaption]);
 
   const handleSubmit = useCallback(async () => {
     if (!croppedBlob || !activeProjectId || !postingMode) {
@@ -369,6 +425,12 @@ export function UploadFlow() {
       "croppedImage",
       new File([croppedBlob], "crop.jpg", { type: "image/jpeg" }),
     );
+    if (secondCroppedBlob) {
+      formData.append(
+        "croppedImage2",
+        new File([secondCroppedBlob], "crop2.jpg", { type: "image/jpeg" }),
+      );
+    }
     formData.append("memeType", memeType);
     formData.append("pipeline", pipeline);
     formData.append("projectId", activeProjectId);
@@ -396,7 +458,12 @@ export function UploadFlow() {
     }
 
     if (postingMode === "ai_experiment") {
-      formData.append("aiMasterStyle", experimentMasterChoice);
+      formData.append(
+        "aiMasterStyle",
+        experimentMemeArtKey
+          ? encodeExperimentalMemeArtChoice(experimentMemeArtKey)
+          : encodeExperimentalMasterChoice(experimentMasterChoice),
+      );
       if (experimentMinimalLayout) {
         formData.append("aiExperimentalMinimal", "1");
       }
@@ -422,11 +489,13 @@ export function UploadFlow() {
     router.push("/feed");
   }, [
     croppedBlob,
+    secondCroppedBlob,
     activeProjectId,
     postingMode,
     selectedCaption,
     userText,
     gps,
+    experimentMemeArtKey,
     experimentMasterChoice,
     experimentMinimalLayout,
     startJob,
@@ -521,6 +590,8 @@ export function UploadFlow() {
     return (
       <ImageCropper
         imageSrc={imageSrc}
+        secondImageSrc={cropSecondHistory ? secondImageSrc : null}
+        onSecondImageSelected={(file) => void handleSecondImageSelect(file)}
         onCropComplete={handleCropComplete}
         onCancel={() => {
           window.history.back();
@@ -722,23 +793,42 @@ export function UploadFlow() {
 
         {(croppedPreviewUrl ?? imageSrc) && (
           <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={croppedPreviewUrl ?? imageSrc!}
-              alt="Dein zugeschnittenes Foto"
-              className="aspect-[2/3] w-full object-contain"
+            <HorizontalSnapScroller
+              slides={[
+                {
+                  key: "preview-1",
+                  src: croppedPreviewUrl ?? imageSrc!,
+                  alt: "Dein zugeschnittenes Foto",
+                  label: "Bild 1",
+                  overlay: (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRetryPostId(null);
+                        retrySessionDoneRef.current = null;
+                        window.history.go(-(3 + (cropSecondHistory ? 1 : 0)));
+                      }}
+                      className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1.5 text-xs font-medium text-zinc-200 backdrop-blur-sm hover:bg-black/80"
+                    >
+                      Neu auswählen
+                    </button>
+                  ),
+                },
+                ...((secondCroppedPreviewUrl ?? secondImageSrc)
+                  ? [
+                      {
+                        key: "preview-2",
+                        src: secondCroppedPreviewUrl ?? secondImageSrc!,
+                        alt: "Dein zweites zugeschnittenes Foto",
+                        label: "Bild 2",
+                      },
+                    ]
+                  : []),
+              ]}
+              showPageBadge
+              slideClassName="w-full"
+              imgClassName="aspect-[2/3] w-full object-contain"
             />
-            <button
-              type="button"
-              onClick={() => {
-                setRetryPostId(null);
-                retrySessionDoneRef.current = null;
-                window.history.go(-3);
-              }}
-              className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1.5 text-xs font-medium text-zinc-200 backdrop-blur-sm hover:bg-black/80"
-            >
-              Neu auswählen
-            </button>
           </div>
         )}
 
@@ -858,26 +948,71 @@ export function UploadFlow() {
         {postingMode === "ai_experiment" && (
           <div className="space-y-3 rounded-xl border border-cyan-600/35 bg-cyan-950/30 px-3 py-2.5">
             <p className="text-xs leading-snug text-zinc-400">
-              Hier experimentiert Franz mit dem Meme-Engine herum.
+              Meme-Art und Masterprompt schließen sich aus — wähle jeweils nur
+              eine Steuerung.
             </p>
-            <label className="sr-only" htmlFor="experiment-master-style">
-              Master-Prompt-Stil
-            </label>
-            <select
-              id="experiment-master-style"
-              value={experimentMasterChoice}
-              onChange={(e) => setExperimentMasterChoice(e.target.value)}
-              className="w-full rounded-lg border border-cyan-800/50 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-orange-500"
-            >
+            <div className="space-y-1.5">
+              <label
+                className="text-xs font-medium text-zinc-300"
+                htmlFor="experiment-meme-art"
+              >
+                Meme-Art
+              </label>
+              <select
+                id="experiment-meme-art"
+                value={experimentMemeArtKey}
+                disabled={experimentMasterChoice !== ROTATING_EXPERIMENTAL_KEY}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setExperimentMemeArtKey(value);
+                  if (value) {
+                    setExperimentMasterChoice(ROTATING_EXPERIMENTAL_KEY);
+                  }
+                }}
+                className="w-full rounded-lg border border-cyan-800/50 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-orange-500 disabled:cursor-not-allowed disabled:opacity-55"
+              >
+                <option value="">Keine — Masterprompt steuert</option>
+                {Object.entries(EXPERIMENTAL_MEME_ART_STYLES).map(
+                  ([key, meta]) => (
+                    <option key={key} value={key}>
+                      {meta.label}
+                    </option>
+                  ),
+                )}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label
+                className="text-xs font-medium text-zinc-300"
+                htmlFor="experiment-master-style"
+              >
+                Masterprompt
+              </label>
+              <select
+                id="experiment-master-style"
+                value={experimentMasterChoice}
+                disabled={Boolean(experimentMemeArtKey)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setExperimentMasterChoice(value);
+                  if (value !== ROTATING_EXPERIMENTAL_KEY) {
+                    setExperimentMemeArtKey("");
+                  }
+                }}
+                className="w-full rounded-lg border border-cyan-800/50 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-orange-500 disabled:cursor-not-allowed disabled:opacity-55"
+              >
               <option value={ROTATING_EXPERIMENTAL_KEY}>
                 Automatisch wechseln (Rotation je Meme)
               </option>
-              {Object.entries(EXPERIMENTAL_AI_MASTER_STYLES).map(([key, meta]) => (
-                <option key={key} value={key}>
-                  {meta.label}
-                </option>
-              ))}
+              {Object.entries(EXPERIMENTAL_NAMED_MASTER_PROMPTS).map(
+                ([key, meta]) => (
+                  <option key={key} value={key}>
+                    {meta.label}
+                  </option>
+                ),
+              )}
             </select>
+            </div>
             <label className="flex cursor-pointer items-start gap-2.5 text-left">
               <input
                 type="checkbox"
@@ -886,8 +1021,8 @@ export function UploadFlow() {
                 className="mt-0.5 h-4 w-4 shrink-0 rounded border-cyan-700 bg-zinc-900 text-orange-500 focus:ring-orange-500"
               />
               <span className="text-xs leading-snug text-zinc-300">
-                Sehr reduzierte Bildelemente (optional) — Fokus auf Text, kaum
-                Deko im Bild.
+                Sehr reduzierte Bildelemente (optional) — Fokus auf Text, maximal
+                zwei klare Grafikelemente.
               </span>
             </label>
           </div>

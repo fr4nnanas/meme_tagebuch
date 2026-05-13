@@ -6,6 +6,7 @@ import {
   memePublishedObjectKey,
   normalizeR2Key,
   originalObjectKey,
+  originalReference2ObjectKey,
   r2Url,
 } from "@/lib/storage/r2-url";
 import { r2DeleteWithVariants } from "@/lib/storage/r2";
@@ -220,6 +221,7 @@ export async function startMemeJob(
   if (!user) return { error: "Nicht angemeldet" };
 
   const croppedImageFile = formData.get("croppedImage") as File | null;
+  const croppedImage2File = formData.get("croppedImage2") as File | null;
   const memeType = formData.get("memeType") as
     | "ai_generated"
     | "canvas_overlay"
@@ -273,10 +275,24 @@ export async function startMemeJob(
       : crypto.randomUUID();
 
   const originalPath = originalObjectKey(projectId, user.id, postId);
+  const originalPath2 = croppedImage2File
+    ? originalReference2ObjectKey(projectId, user.id, postId)
+    : null;
 
   try {
     await uploadOriginalJpegWithThumb(originalPath, imageBuffer);
+    if (croppedImage2File && originalPath2) {
+      const image2Bytes = await croppedImage2File.arrayBuffer();
+      await uploadOriginalJpegWithThumb(
+        originalPath2,
+        Buffer.from(image2Bytes),
+      );
+    }
   } catch {
+    await r2DeleteWithVariants([
+      originalPath,
+      ...(originalPath2 ? [originalPath2] : []),
+    ]);
     return { error: "Upload fehlgeschlagen (Speicher)." };
   }
 
@@ -288,6 +304,7 @@ export async function startMemeJob(
       user_id: user.id,
       project_id: projectId,
       original_image_url: originalPath,
+      original_image_url_2: originalPath2,
       meme_image_url: null,
       meme_type: memeType,
       pipeline,
@@ -301,7 +318,10 @@ export async function startMemeJob(
     .single();
 
   if (postError || !post) {
-    await r2DeleteWithVariants([originalPath]);
+    await r2DeleteWithVariants([
+      originalPath,
+      ...(originalPath2 ? [originalPath2] : []),
+    ]);
     return { error: `Post konnte nicht erstellt werden: ${postError?.message}` };
   }
 
@@ -349,6 +369,7 @@ export type MemeRetryDraftResult =
       postId: string;
       projectId: string;
       originalSignedUrl: string;
+      secondOriginalSignedUrl: string | null;
       memeType: "ai_generated" | "canvas_overlay";
       pipeline: "direct" | "assisted" | "manual";
       pipelineInputText: string | null;
@@ -370,7 +391,7 @@ export async function getMemeRetryDraftAction(
   const { data: post, error } = await supabase
     .from("posts")
     .select(
-      "id, user_id, project_id, original_image_url, meme_image_url, meme_type, pipeline, pipeline_input_text, lat, lng",
+      "id, user_id, project_id, original_image_url, original_image_url_2, meme_image_url, meme_type, pipeline, pipeline_input_text, lat, lng",
     )
     .eq("id", postId)
     .eq("user_id", user.id)
@@ -385,8 +406,15 @@ export async function getMemeRetryDraftAction(
   }
 
   let originalSignedUrl: string;
+  let secondOriginalSignedUrl: string | null = null;
   try {
     originalSignedUrl = r2Url(normalizeR2Key(post.original_image_url), "full");
+    if (post.original_image_url_2) {
+      secondOriginalSignedUrl = r2Url(
+        normalizeR2Key(post.original_image_url_2),
+        "full",
+      );
+    }
   } catch {
     return { ok: false, error: "Bild-Link konnte nicht erstellt werden" };
   }
@@ -396,6 +424,7 @@ export async function getMemeRetryDraftAction(
     postId: post.id,
     projectId: post.project_id,
     originalSignedUrl,
+    secondOriginalSignedUrl,
     memeType: post.meme_type as "ai_generated" | "canvas_overlay",
     pipeline: post.pipeline as "direct" | "assisted" | "manual",
     pipelineInputText: post.pipeline_input_text ?? null,
@@ -419,6 +448,7 @@ export async function retryMemeJobFromDraftAction(
 
   const postId = formData.get("postId") as string | null;
   const croppedImageFile = formData.get("croppedImage") as File | null;
+  const croppedImage2File = formData.get("croppedImage2") as File | null;
   const memeType = formData.get("memeType") as
     | "ai_generated"
     | "canvas_overlay"
@@ -461,7 +491,7 @@ export async function retryMemeJobFromDraftAction(
   const { data: postRow, error: postFetchError } = await supabase
     .from("posts")
     .select(
-      "id, user_id, project_id, original_image_url, meme_image_url, meme_type",
+      "id, user_id, project_id, original_image_url, original_image_url_2, meme_image_url, meme_type",
     )
     .eq("id", postId)
     .eq("user_id", user.id)
@@ -489,11 +519,24 @@ export async function retryMemeJobFromDraftAction(
   }
 
   const originalPath = postRow.original_image_url;
+  const existingOriginalPath2 = postRow.original_image_url_2 as string | null;
   const imageBytes = await croppedImageFile.arrayBuffer();
   const imageBuffer = Buffer.from(imageBytes);
 
+  let originalPath2 = existingOriginalPath2;
   try {
     await uploadOriginalJpegWithThumb(normalizeR2Key(originalPath), imageBuffer);
+    if (croppedImage2File) {
+      originalPath2 = originalReference2ObjectKey(projectId, user.id, postId);
+      const image2Bytes = await croppedImage2File.arrayBuffer();
+      await uploadOriginalJpegWithThumb(
+        normalizeR2Key(originalPath2),
+        Buffer.from(image2Bytes),
+      );
+    } else if (existingOriginalPath2) {
+      await r2DeleteWithVariants([normalizeR2Key(existingOriginalPath2)]);
+      originalPath2 = null;
+    }
   } catch {
     return { error: "Upload fehlgeschlagen (Speicher)." };
   }
@@ -505,6 +548,7 @@ export async function retryMemeJobFromDraftAction(
       pipeline,
       pipeline_input_text: pipelineInputText,
       ai_experimental_minimal: aiExperimentalMinimal,
+      original_image_url_2: originalPath2,
       lat: lat && !isNaN(lat) ? lat : null,
       lng: lng && !isNaN(lng) ? lng : null,
     })

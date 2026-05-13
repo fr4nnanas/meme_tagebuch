@@ -1,0 +1,22 @@
+import { normalizeR2Key, safeR2Url } from "@/lib/storage/r2-url";
+
+export const POST_GRID_PAGE_SIZE = 60;
+
+export interface PostGridThumbUrls {
+  thumb_url: string | null;
+  full_fallback_url: string | null;
+}
+
+/** Raster: Meme-Thumb, sonst Original-Thumb; Fallback auf volles JPEG bei fehlender WebP-Variante. */
+export function resolvePostGridThumbUrls(
+  memeImageUrl: string | null,
+  originalImageUrl: string,
+): PostGridThumbUrls {
+  const originalKey = normalizeR2Key(originalImageUrl);
+  const memeKey = memeImageUrl ? normalizeR2Key(memeImageUrl) : null;
+  const primaryKey = memeKey ?? originalKey;
+  return {
+    thumb_url: safeR2Url(primaryKey, "thumb"),
+    full_fallback_url: safeR2Url(primaryKey, "full"),
+  };
+}

@@ -10,7 +10,8 @@
     "start": "next start",
     "lint": "eslint",
     "gen:pwa-icons": "node scripts/gen-pwa-icons.mjs",
-    "migrate:r2": "node --env-file=.env.local scripts/migrate-supabase-to-r2.mjs"
+    "migrate:r2": "node --env-file=.env.local scripts/migrate-supabase-to-r2.mjs",
+    "backfill:r2-variants": "node --env-file=.env.local scripts/backfill-r2-variants.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1045.0",

@@ -360,6 +360,7 @@ export type Database = {
           meme_image_url: string | null
           meme_type: string
           original_image_url: string
+          original_image_url_2: string | null
           overlay_text_bottom: string | null
           overlay_text_top: string | null
           pipeline: string
@@ -378,6 +379,7 @@ export type Database = {
           meme_image_url?: string | null
           meme_type: string
           original_image_url: string
+          original_image_url_2?: string | null
           overlay_text_bottom?: string | null
           overlay_text_top?: string | null
           pipeline: string
@@ -396,6 +398,7 @@ export type Database = {
           meme_image_url?: string | null
           meme_type?: string
           original_image_url?: string
+          original_image_url_2?: string | null
           overlay_text_bottom?: string | null
           overlay_text_top?: string | null
           pipeline?: string

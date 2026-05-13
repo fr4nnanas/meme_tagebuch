@@ -1,13 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  coerceOriginalSources,
+  originalPageLabel,
+} from "@/lib/media/original-sources";
 
 const DOUBLE_TAP_MS = 320;
 const TAP_MOVE_TOLERANCE_PX = 14;
 
 interface FeedMediaStripProps {
   memeSrc: string;
-  originalSrc: string | null;
+  originalSrc: string | string[] | null;
   memeAlt?: string;
   originalAlt?: string;
   onDoubleTapLike: () => void;
@@ -30,18 +34,19 @@ export function FeedMediaStrip({
   const lastTapRef = useRef(0);
   const tapStartRef = useRef<{ x: number; y: number } | null>(null);
   const stripScrollRef = useRef<HTMLDivElement>(null);
-  const [activeSide, setActiveSide] = useState<"meme" | "original">("meme");
+  const [activePage, setActivePage] = useState(0);
+  const originals = coerceOriginalSources(originalSrc);
 
-  const syncActiveSideFromScroll = useCallback(() => {
+  const syncActivePageFromScroll = useCallback(() => {
     const el = stripScrollRef.current;
     if (!el) return;
     const page = Math.round(el.scrollLeft / Math.max(1, el.clientWidth));
-    setActiveSide(page >= 1 ? "original" : "meme");
+    setActivePage(page);
   }, []);
 
   useEffect(() => {
-    syncActiveSideFromScroll();
-  }, [memeSrc, originalSrc, syncActiveSideFromScroll]);
+    syncActivePageFromScroll();
+  }, [memeSrc, originalSrc, syncActivePageFromScroll]);
 
   const tryRegisterDoubleTap = useCallback(() => {
     const now = Date.now();
@@ -78,7 +83,7 @@ export function FeedMediaStrip({
     [onDoubleTapLike],
   );
 
-  if (!originalSrc) {
+  if (originals.length === 0) {
     return (
       <div
         className="relative h-full w-full touch-manipulation bg-zinc-800"
@@ -108,7 +113,7 @@ export function FeedMediaStrip({
     >
       <div
         ref={stripScrollRef}
-        onScroll={syncActiveSideFromScroll}
+        onScroll={syncActivePageFromScroll}
         className="flex h-full w-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         aria-label="Meme; nach links wischen für Originalfoto"
         role="region"
@@ -124,19 +129,28 @@ export function FeedMediaStrip({
           />
           {memeOverlay}
         </div>
-        <div className="relative h-full w-full shrink-0 snap-start">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={originalSrc}
-            alt={originalAlt}
-            className="h-full w-full object-cover select-none"
-            loading="lazy"
-            draggable={false}
-          />
-        </div>
+        {originals.map((src, index) => (
+          <div
+            key={`${src}-${index}`}
+            className="relative h-full w-full shrink-0 snap-start"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={src}
+              alt={
+                originals.length > 1
+                  ? `${originalAlt} ${index + 1}`
+                  : originalAlt
+              }
+              className="h-full w-full object-cover select-none"
+              loading="lazy"
+              draggable={false}
+            />
+          </div>
+        ))}
       </div>
       <span className="pointer-events-none absolute bottom-2 left-2 z-[2] rounded bg-zinc-950/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-300">
-        {activeSide === "meme" ? "Meme" : "Original"}
+        {originalPageLabel(activePage, originals.length)}
       </span>
     </div>
   );

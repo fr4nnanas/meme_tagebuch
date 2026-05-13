@@ -303,15 +303,12 @@ export function FeedCard({
           {post.meme_full_url || post.signed_url ? (
             <FeedMediaStrip
               memeSrc={(post.meme_full_url ?? post.signed_url)!}
-              originalSrc={post.original_signed_url}
-              onDoubleTapLike={handleLike}
-              memeOverlay={
-                <PostRecentLikersOnImage
-                  likers={recentLikers}
-                  likeCount={optimisticLike.count}
-                  onOpenList={() => setLikersOpen(true)}
-                />
+              originalSrc={
+                post.original_signed_urls.length > 0
+                  ? post.original_signed_urls
+                  : post.original_signed_url
               }
+              onDoubleTapLike={handleLike}
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-zinc-600">
@@ -322,7 +319,7 @@ export function FeedCard({
 
         <MemePromptDisclosure pipelineInputText={post.pipeline_input_text} />
 
-        {/* Kommentar, Like, Bewertung, Teilen — Liker-Liste über Avatare auf dem Bild */}
+        {/* Kommentar, Like, Bewertung, Teilen — Liker-Avatare neben dem Like-Herz */}
         <div className="flex items-center gap-1.5 border-b border-zinc-800/80 px-2 pt-2 sm:px-3">
           <div className="flex shrink-0 items-center gap-0">
             <button
@@ -357,6 +354,12 @@ export function FeedCard({
                 {optimisticLike.count}
               </span>
             </button>
+
+            <PostRecentLikersOnImage
+              likers={recentLikers}
+              likeCount={optimisticLike.count}
+              onOpenList={() => setLikersOpen(true)}
+            />
           </div>
 
           {post.meme_image_url ? (

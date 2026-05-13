@@ -2,6 +2,7 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { memeAiVariantObjectKey, normalizeR2Key } from "@/lib/storage/r2-url";
 import { r2Get } from "@/lib/storage/r2";
 import { uploadMemeJpegWithWebpVariants } from "@/lib/storage/image-pipeline";
+import { compositeReferenceJpegs } from "@/lib/storage/reference-composite";
 import { openaiClient } from "@/lib/meme/openai-client";
 import {
   AI_EXPERIMENTAL_MINIMAL_LAYOUT_INSET,
@@ -11,6 +12,7 @@ import {
   STANDARD_AI_MASTER_KEY,
   STANDARD_AI_MEME_BASE_PROMPT,
 } from "@/lib/meme/ai-meme-master-styles";
+import { memeIdeaFromUserClause } from "@/lib/meme/ai-user-text-prompt";
 import {
   canvasSystemPromptInset,
   inlineImageEditProjectContext,
@@ -31,6 +33,9 @@ export interface ProcessJobParams {
   /** Experimenteller Modus: sehr reduzierte Bildelemente (nur bei nicht-Standard-Master) */
   aiExperimentalMinimal?: boolean;
 }
+
+const DUAL_REFERENCE_PROMPT_INSET =
+  " Der Nutzer hat zwei Referenzfotos gewählt; im Eingabebild links steht Bild 1, rechts Bild 2. Beziehe beide inhaltlich ein.";
 
 // error_msg-Feld wird bei status='completed' als Ergebnisspeicher zweckentfremdet.
 // Struktur: JSON-String mit type + Ergebnisdaten.
@@ -55,6 +60,22 @@ async function downloadOriginalBuffer(originalPath: string): Promise<Buffer> {
   } catch {
     throw new Error("Original-Bild konnte nicht geladen werden");
   }
+}
+
+async function loadReferenceBuffers(
+  originalPath: string,
+  originalPath2: string | null | undefined,
+): Promise<{ buffer: Buffer; dual: boolean; secondBuffer?: Buffer }> {
+  const first = await downloadOriginalBuffer(originalPath);
+  if (!originalPath2) {
+    return { buffer: first, dual: false };
+  }
+  const second = await downloadOriginalBuffer(originalPath2);
+  return {
+    buffer: await compositeReferenceJpegs(first, second),
+    dual: true,
+    secondBuffer: second,
+  };
 }
 
 /** Erster Zeilenumbruch trennt oben/unten; eine Zeile nur unten. Text bleibt inhaltlich erhalten (nur äußeres Trim). */
@@ -146,16 +167,33 @@ export async function processJob(params: ProcessJobParams): Promise<void> {
       .eq("id", params.jobId);
 
     let result: JobResult;
+    const { data: postRow } = await supabase
+      .from("posts")
+      .select("original_image_url_2")
+      .eq("id", params.postId)
+      .maybeSingle();
+    const originalPath2 = postRow?.original_image_url_2 ?? null;
 
     if (params.memeType === "ai_generated") {
-      const imageBuffer = await downloadOriginalBuffer(params.originalPath);
-      result = await generateAiMeme(params, imageBuffer);
+      const reference = await loadReferenceBuffers(
+        params.originalPath,
+        originalPath2,
+      );
+      result = await generateAiMeme(params, reference.buffer, reference.dual);
     } else if (params.memeType === "canvas_overlay") {
       if (params.pipeline === "manual" || params.pipeline === "assisted") {
         result = await applyManualCanvasOverlay(params);
       } else {
-        const imageBuffer = await downloadOriginalBuffer(params.originalPath);
-        result = await generateCanvasText(params, imageBuffer);
+        const first = await downloadOriginalBuffer(params.originalPath);
+        const second = originalPath2
+          ? await downloadOriginalBuffer(originalPath2)
+          : null;
+        result = await generateCanvasText(
+          params,
+          first,
+          Boolean(second),
+          second ?? undefined,
+        );
       }
     } else {
       throw new Error("Unbekannte Meme-/Pipeline-Konfiguration.");
@@ -192,6 +230,7 @@ async function buildAiMemePrompt(
   userText?: string,
   resolvedMasterStyleKey: string = STANDARD_AI_MASTER_KEY,
   aiExperimentalMinimal: boolean = false,
+  dualReference: boolean = false,
 ): Promise<string> {
   const { data: project } = await supabase
     .from("projects")
@@ -215,14 +254,15 @@ async function buildAiMemePrompt(
   const normalized = normalizeStoredProjectAiContext(project?.ai_prompt_context);
   const contextPart = inlineImageEditProjectContext(normalized);
 
-  return userText
-    ? `${basePrompt}${contextPart} Meme-Idee vom Nutzer: ${userText}`
-    : `${basePrompt}${contextPart}`;
+  const userClause = userText ? memeIdeaFromUserClause(userText) : "";
+  const dualClause = dualReference ? DUAL_REFERENCE_PROMPT_INSET : "";
+  return `${basePrompt}${contextPart}${dualClause}${userClause}`;
 }
 
 async function generateAiMeme(
   params: ProcessJobParams,
   imageBuffer: Buffer,
+  dualReference: boolean,
 ): Promise<JobResult> {
   const supabase = createServiceRoleClient();
 
@@ -241,6 +281,7 @@ async function generateAiMeme(
     params.userText,
     resolvedMasterKey,
     Boolean(params.aiExperimentalMinimal),
+    dualReference,
   );
 
   const response = await openaiClient().images.edit({
@@ -312,7 +353,9 @@ export async function appendSecondAiVariantToJob(
 
   const { data: post, error: postError } = await supabase
     .from("posts")
-    .select("id, project_id, user_id, original_image_url, ai_experimental_minimal")
+    .select(
+      "id, project_id, user_id, original_image_url, original_image_url_2, ai_experimental_minimal",
+    )
     .eq("id", job.post_id)
     .maybeSingle();
 
@@ -320,8 +363,11 @@ export async function appendSecondAiVariantToJob(
     throw new Error("Post nicht gefunden");
   }
 
-  const imageBuffer = await downloadOriginalBuffer(post.original_image_url);
-  const imageFile = new File([new Uint8Array(imageBuffer)], "photo.jpg", {
+  const reference = await loadReferenceBuffers(
+    post.original_image_url,
+    post.original_image_url_2,
+  );
+  const imageFile = new File([new Uint8Array(reference.buffer)], "photo.jpg", {
     type: "image/jpeg",
   });
 
@@ -333,6 +379,7 @@ export async function appendSecondAiVariantToJob(
     result.userText,
     result.aiMasterStyle ?? STANDARD_AI_MASTER_KEY,
     Boolean(postRow.ai_experimental_minimal),
+    reference.dual,
   );
 
   const response = await openaiClient().images.edit({
@@ -383,10 +430,13 @@ export async function appendSecondAiVariantToJob(
 async function generateCanvasText(
   params: ProcessJobParams,
   imageBuffer: Buffer,
+  dualReference: boolean,
+  secondBuffer?: Buffer,
 ): Promise<JobResult> {
   const supabase = createServiceRoleClient();
 
   const base64Image = imageBuffer.toString("base64");
+  const base64Second = secondBuffer?.toString("base64") ?? null;
 
   // Projekt-Kontext aus der Datenbank laden
   const { data: project } = await supabase
@@ -399,7 +449,11 @@ async function generateCanvasText(
     normalizeStoredProjectAiContext(project?.ai_prompt_context),
   );
 
-  const systemPrompt = `Du bist ein Meme-Texter für deutschsprachige Memes. Analysiere das Foto und erstelle kurzen, witzigen Meme-Text.${contextNote}
+  const dualNote = dualReference
+    ? " Es liegen zwei Referenzfotos vor; beziehe beide inhaltlich ein."
+    : "";
+
+  const systemPrompt = `Du bist ein Meme-Texter für deutschsprachige Memes. Analysiere das Foto und erstelle kurzen, witzigen Meme-Text.${contextNote}${dualNote}
 Antworte NUR mit einem JSON-Objekt: {"top": string|null, "bottom": string}
 Typisches Setup–Pointe-Meme – setze wenn möglich BEIDE Felder:
 - "top": Aufhänger, Setup oder Reaktion OBEN (höchstens zwei Zeilen; zusätzliche Zeile nur durch Zeilenumbruch im Text).
@@ -409,24 +463,41 @@ Nutze top: null NUR wenn wirklich ein einzeiliges Bottom-Overlay besser wirkt al
 - Sprache: ausschließlich Deutsch (typische Meme-/Umgangssprache)`;
 
   const userContent = params.userText
-    ? `Erstelle Meme-Text für dieses Foto. Thema/Idee des Users: ${params.userText}`
-    : "Erstelle lustigen Meme-Text für dieses Foto.";
+    ? `Erstelle Meme-Text für ${dualReference ? "diese beiden Fotos" : "dieses Foto"}. Thema/Idee des Users: ${params.userText}`
+    : `Erstelle lustigen Meme-Text für ${dualReference ? "diese beiden Fotos" : "dieses Foto"}.`;
+
+  const visionParts: Array<
+    | { type: "image_url"; image_url: { url: string; detail: "low" } }
+    | { type: "text"; text: string }
+  > = [
+    {
+      type: "image_url",
+      image_url: {
+        url: `data:image/jpeg;base64,${base64Image}`,
+        detail: "low",
+      },
+    },
+  ];
+  if (base64Second) {
+    visionParts.push({
+      type: "image_url",
+      image_url: {
+        url: `data:image/jpeg;base64,${base64Second}`,
+        detail: "low",
+      },
+    });
+  }
+  visionParts.push({
+    type: "text",
+    text: `${systemPrompt}\n\n${userContent}`,
+  });
 
   const response = await openaiClient().chat.completions.create({
     model: "gpt-4o",
     messages: [
       {
         role: "user",
-        content: [
-          {
-            type: "image_url",
-            image_url: {
-              url: `data:image/jpeg;base64,${base64Image}`,
-              detail: "low",
-            },
-          },
-          { type: "text", text: `${systemPrompt}\n\n${userContent}` },
-        ],
+        content: visionParts,
       },
     ],
     max_tokens: 150,

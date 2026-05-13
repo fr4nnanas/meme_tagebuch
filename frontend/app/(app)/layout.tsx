@@ -10,6 +10,8 @@ import { BottomNav } from "@/components/features/app/bottom-nav";
 import { JobProvider } from "@/components/features/app/job-context";
 import { GlobalProgressBar } from "@/components/features/app/job-progress-bar";
 import { JobCompletionHandler } from "@/components/features/upload/job-completion-handler";
+import { InterimWelcomeBanner } from "@/components/features/app/interim-welcome-banner";
+import { shouldShowInterimWelcomeBanner } from "@/lib/app/interim-welcome";
 
 export default async function AppLayout({
   children,
@@ -35,6 +37,16 @@ export default async function AppLayout({
   const projectIds = (memberships ?? []).map((m) => m.project_id);
   let initialProjects: ProjectInfo[] = [];
 
+  const { data: profile } = await supabase
+    .from("users")
+    .select("username, created_at")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const showInterimWelcome =
+    profile?.created_at != null &&
+    shouldShowInterimWelcomeBanner(profile.created_at);
+
   if (projectIds.length > 0) {
     const { data: projectsData } = await supabase
       .from("projects")
@@ -57,6 +69,12 @@ export default async function AppLayout({
         <GlobalProgressBar />
         <div className="flex min-h-screen flex-col bg-zinc-900 text-zinc-100">
           <main className="mx-auto w-full max-w-md flex-1 pb-24">
+            {showInterimWelcome ? (
+              <InterimWelcomeBanner
+                userId={user.id}
+                username={profile?.username ?? ""}
+              />
+            ) : null}
             {children}
           </main>
           <BottomNav userId={user.id} />

@@ -13,7 +13,7 @@ interface PostRecentLikersOnImageProps {
 const MAX_VISIBLE = 4;
 
 /**
- * Überlappende Profilbilder unten rechts auf dem Meme (älteste links, neueste oben rechts).
+ * Überlappende Profilbilder neben dem Like-Herz unter dem Meme (älteste links, neueste oben rechts).
  */
 export function PostRecentLikersOnImage({
   likers,
@@ -34,7 +34,7 @@ export function PostRecentLikersOnImage({
       }}
       aria-haspopup="dialog"
       aria-label={`${likeCount} Likes, Liste der Liker öffnen`}
-      className="absolute bottom-2 right-2 z-[1] flex items-center rounded-full bg-black/45 py-1 pl-1 pr-2 shadow-lg ring-1 ring-white/15 backdrop-blur-[2px] transition hover:bg-black/60"
+      className="ml-0.5 flex h-10 shrink-0 items-center rounded-full py-1 pl-1 pr-2 transition hover:bg-zinc-800/80"
     >
       <span className="flex items-center" aria-hidden>
         {display.map((liker, index) => (

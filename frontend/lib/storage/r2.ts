@@ -1,6 +1,7 @@
 import {
   DeleteObjectsCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -101,6 +102,19 @@ export async function r2DeleteWithVariants(keys: string[]): Promise<void> {
     for (const e of expandR2DeleteKeys(k)) expanded.add(e);
   }
   await r2Delete([...expanded]);
+}
+
+export async function r2Exists(key: string): Promise<boolean> {
+  const client = r2Client();
+  const Bucket = await resolvedBucket();
+  try {
+    await client.send(
+      new HeadObjectCommand({ Bucket, Key: normalizeR2Key(key) }),
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function r2Get(key: string): Promise<Buffer> {

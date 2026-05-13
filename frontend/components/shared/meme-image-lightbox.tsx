@@ -5,10 +5,15 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import {
+  coerceOriginalSources,
+  originalPageLabel,
+} from "@/lib/media/original-sources";
 
 export interface MemeImageLightboxProps {
   open: boolean;
@@ -16,7 +21,7 @@ export interface MemeImageLightboxProps {
   /** Fertiges Meme (Nachbearbeitung/Zuschnitt) */
   memeSrc: string | null;
   /** Upload / Rohfoto vor Nachbearbeitung — wenn gesetzt: Wisch-Galerie Original ↔ Meme */
-  originalSrc: string | null;
+  originalSrc: string | string[] | null;
   memeAlt?: string;
   originalAlt?: string;
   /**
@@ -39,16 +44,20 @@ export function MemeImageLightbox({
   footer,
 }: MemeImageLightboxProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
-  /** 0 = Meme (links, wie FeedMediaStrip), 1 = Original (rechts) */
-  const [page, setPage] = useState<0 | 1>(0);
+  const [page, setPage] = useState(0);
   const onCloseRef = useRef(onClose);
   const historyPushedRef = useRef(false);
+  const originals = useMemo(
+    () => coerceOriginalSources(originalSrc),
+    [originalSrc],
+  );
+  const pageCount = originals.length > 0 ? originals.length + 1 : 1;
 
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
 
-  const hasPair = Boolean(memeSrc && originalSrc);
+  const hasGallery = Boolean(memeSrc && originals.length > 0);
 
   const requestClose = useCallback(() => {
     if (historySync) window.history.back();
@@ -80,13 +89,17 @@ export function MemeImageLightbox({
     };
   }, [open, historySync]);
 
-  const scrollToPage = useCallback((target: 0 | 1) => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    const w = el.clientWidth;
-    el.scrollTo({ left: target * w, behavior: "smooth" });
-    setPage(target);
-  }, []);
+  const scrollToPage = useCallback(
+    (target: number) => {
+      const el = scrollerRef.current;
+      if (!el) return;
+      const clamped = Math.min(Math.max(target, 0), pageCount - 1);
+      const w = el.clientWidth;
+      el.scrollTo({ left: clamped * w, behavior: "smooth" });
+      setPage(clamped);
+    },
+    [pageCount],
+  );
 
   useEffect(() => {
     if (open) return;
@@ -97,9 +110,7 @@ export function MemeImageLightbox({
   useLayoutEffect(() => {
     if (!open) return;
     const el = scrollerRef.current;
-    if (!el || !hasPair) return;
-    // Direkte Zuweisung + scroll-auto am Container: vermeidet Weich-Scroll beim Öffnen
-    // (CSS scroll-behavior: smooth würde scrollTo/„auto“ oft noch animieren).
+    if (!el || !hasGallery) return;
     const w = el.clientWidth;
     if (w > 0) {
       el.scrollLeft = 0;
@@ -110,19 +121,19 @@ export function MemeImageLightbox({
       if (w2 > 0) el.scrollLeft = 0;
     });
     return () => cancelAnimationFrame(id);
-  }, [open, memeSrc, originalSrc, hasPair]);
+  }, [open, memeSrc, originals, hasGallery]);
 
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") requestClose();
-      if (!hasPair) return;
-      if (e.key === "ArrowLeft") scrollToPage(0);
-      if (e.key === "ArrowRight") scrollToPage(1);
+      if (!hasGallery) return;
+      if (e.key === "ArrowLeft") scrollToPage(page - 1);
+      if (e.key === "ArrowRight") scrollToPage(page + 1);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, hasPair, scrollToPage, requestClose]);
+  }, [open, hasGallery, page, scrollToPage, requestClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -142,7 +153,6 @@ export function MemeImageLightbox({
       aria-modal="true"
       aria-label="Vergrößertes Bild"
     >
-      {/* Backdrop: Klick außerhalb der Karte schließt */}
       <div
         role="presentation"
         className="absolute inset-0 cursor-default bg-zinc-950/65 backdrop-blur-[3px] transition-colors hover:bg-zinc-950/75"
@@ -162,7 +172,7 @@ export function MemeImageLightbox({
         </div>
 
         <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-zinc-950/40">
-          {hasPair ? (
+          {hasGallery ? (
             <>
               <div
                 ref={scrollerRef}
@@ -171,7 +181,7 @@ export function MemeImageLightbox({
                   const w = el.clientWidth;
                   if (w < 1) return;
                   const i = Math.round(el.scrollLeft / w);
-                  setPage(i === 0 ? 0 : 1);
+                  setPage(Math.min(Math.max(i, 0), pageCount - 1));
                 }}
                 className="flex min-h-[min(42dvh,320px)] min-w-0 shrink-0 snap-x snap-mandatory overflow-x-auto overflow-y-hidden scroll-auto sm:min-h-[min(48dvh,380px)]"
               >
@@ -183,14 +193,23 @@ export function MemeImageLightbox({
                     className="max-h-[min(58dvh,640px)] max-w-full object-contain"
                   />
                 </div>
-                <div className="flex h-full w-full min-w-full shrink-0 snap-center snap-always items-center justify-center bg-zinc-950/50 p-2">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={originalSrc!}
-                    alt={originalAlt}
-                    className="max-h-[min(58dvh,640px)] max-w-full object-contain"
-                  />
-                </div>
+                {originals.map((src, index) => (
+                  <div
+                    key={`${src}-${index}`}
+                    className="flex h-full w-full min-w-full shrink-0 snap-center snap-always items-center justify-center bg-zinc-950/50 p-2"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={src}
+                      alt={
+                        originals.length > 1
+                          ? `${originalAlt} ${index + 1}`
+                          : originalAlt
+                      }
+                      className="max-h-[min(58dvh,640px)] max-w-full object-contain"
+                    />
+                  </div>
+                ))}
               </div>
 
               {footer ? (
@@ -200,36 +219,32 @@ export function MemeImageLightbox({
               ) : null}
 
               <div className="flex shrink-0 flex-col items-center gap-2 bg-zinc-900/40 px-2 pb-3 pt-2">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-center gap-2">
                   <button
                     type="button"
-                    onClick={() => scrollToPage(0)}
-                    aria-current={page === 0 ? "true" : undefined}
-                    className={`flex h-9 items-center gap-1 rounded-full border px-3 text-xs font-medium transition-colors ${
-                      page === 0
-                        ? "border-orange-500/60 bg-orange-500/15 text-orange-300"
-                        : "border-zinc-600 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-                    }`}
+                    onClick={() => scrollToPage(page - 1)}
+                    disabled={page <= 0}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-600 text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Vorheriges Bild"
                   >
                     <ChevronLeft className="h-4 w-4" aria-hidden />
-                    Meme
                   </button>
+                  <span className="rounded-full border border-orange-500/60 bg-orange-500/15 px-3 py-1.5 text-xs font-medium text-orange-300">
+                    {originalPageLabel(page, originals.length)}
+                  </span>
                   <button
                     type="button"
-                    onClick={() => scrollToPage(1)}
-                    aria-current={page === 1 ? "true" : undefined}
-                    className={`flex h-9 items-center gap-1 rounded-full border px-3 text-xs font-medium transition-colors ${
-                      page === 1
-                        ? "border-orange-500/60 bg-orange-500/15 text-orange-300"
-                        : "border-zinc-600 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-                    }`}
+                    onClick={() => scrollToPage(page + 1)}
+                    disabled={page >= pageCount - 1}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-600 text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Nächstes Bild"
                   >
-                    Original
                     <ChevronRight className="h-4 w-4" aria-hidden />
                   </button>
                 </div>
                 <p className="max-w-md px-1 text-center text-[11px] leading-snug text-zinc-500">
-                  Wie im Feed: nach links wischen zeigt das Original vor Bearbeitung und Zuschnitt. Tastatur: ← →
+                  Wie im Feed: nach links wischen zeigt die Originale vor Bearbeitung
+                  und Zuschnitt. Tastatur: ← →
                 </p>
               </div>
             </>

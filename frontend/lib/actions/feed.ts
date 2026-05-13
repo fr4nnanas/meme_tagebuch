@@ -67,16 +67,20 @@ function buildRecentLikersByPostId(rows: PostLikeJoinRow[]): Map<string, PostLik
 function buildPublicMediaUrls(
   originalPathRaw: string,
   memePathRaw: string | null,
+  originalPath2Raw?: string | null,
 ): {
   signed_url: string | null;
   meme_full_url: string | null;
   meme_thumb_url: string | null;
   thumbnail_url: string | null;
   original_signed_url: string | null;
+  original_signed_urls: string[];
 } {
   const orig = normalizeR2Key(originalPathRaw);
+  const orig2 = originalPath2Raw ? normalizeR2Key(originalPath2Raw) : null;
   const meme = memePathRaw ? normalizeR2Key(memePathRaw) : null;
-  const original_signed_url = r2Url(orig, "full");
+  const original_signed_urls = [r2Url(orig, "full"), ...(orig2 ? [r2Url(orig2, "full")] : [])];
+  const original_signed_url = original_signed_urls[0] ?? null;
   const originalThumb = r2Url(orig, "thumb");
   if (meme) {
     return {
@@ -85,6 +89,7 @@ function buildPublicMediaUrls(
       meme_thumb_url: r2Url(meme, "thumb"),
       thumbnail_url: r2Url(meme, "thumb"),
       original_signed_url,
+      original_signed_urls,
     };
   }
   return {
@@ -93,6 +98,7 @@ function buildPublicMediaUrls(
     meme_thumb_url: null,
     thumbnail_url: originalThumb,
     original_signed_url,
+    original_signed_urls,
   };
 }
 
@@ -136,6 +142,8 @@ export interface PostWithDetails {
   original_image_url: string;
   /** Öffentliche URL zum Original (JPEG, volle Auflösung). */
   original_signed_url: string | null;
+  /** Alle Referenz-Originale in Reihenfolge (1, optional 2). */
+  original_signed_urls: string[];
   /** Meme JPEG CDN-URL volle Auflösung (Lightbox / Share). */
   meme_full_url: string | null;
   /** Klein / Raster. */
@@ -186,7 +194,7 @@ export async function fetchPostsAction(
     const { data: postsRaw, error: postsError } = await supabase
       .from("posts")
       .select(
-        "id, user_id, project_id, caption, star_rating_avg, star_rating_count, meme_image_url, original_image_url, pipeline, pipeline_input_text, meme_type, created_at, users!user_id(username, avatar_url)",
+        "id, user_id, project_id, caption, star_rating_avg, star_rating_count, meme_image_url, original_image_url, original_image_url_2, pipeline, pipeline_input_text, meme_type, created_at, users!user_id(username, avatar_url)",
       )
       .eq("project_id", projectId)
       .not("meme_image_url", "is", null)
@@ -229,6 +237,8 @@ export async function fetchPostsAction(
       const rawUser = p.users;
       const userInfo = Array.isArray(rawUser) ? rawUser[0] : rawUser;
       const origPath = p.original_image_url as string;
+      const origPath2 = (p as { original_image_url_2?: string | null })
+        .original_image_url_2;
       const pr = p as typeof p & {
         star_rating_avg?: number | null;
         star_rating_count?: number | null;
@@ -237,6 +247,7 @@ export async function fetchPostsAction(
       const media = buildPublicMediaUrls(
         origPath,
         (p.meme_image_url ?? null) as string | null,
+        origPath2,
       );
       return {
         id: p.id,
@@ -346,7 +357,7 @@ export async function fetchUnseenPostsAction(
         supabase
           .from("posts")
           .select(
-            "id, pipeline, pipeline_input_text, original_image_url, star_rating_avg, star_rating_count",
+            "id, pipeline, pipeline_input_text, original_image_url, original_image_url_2, star_rating_avg, star_rating_count",
           )
           .in("id", postIds),
       ]);
@@ -358,6 +369,7 @@ export async function fetchUnseenPostsAction(
           pipeline: string;
           pipeline_input_text: string | null;
           original_image_url: string;
+          original_image_url_2?: string | null;
           star_rating_avg?: number | null;
           star_rating_count?: number | null;
         };
@@ -367,6 +379,7 @@ export async function fetchUnseenPostsAction(
             pipeline: r.pipeline,
             pipeline_input_text: r.pipeline_input_text,
             original_image_url: r.original_image_url,
+            original_image_url_2: r.original_image_url_2 ?? null,
             star_rating_avg:
               r.star_rating_avg != null ? Number(r.star_rating_avg) : null,
             star_rating_count: Number(r.star_rating_count ?? 0),
@@ -408,9 +421,14 @@ export async function fetchUnseenPostsAction(
         meme_thumb_url: null,
         thumbnail_url: null,
         original_signed_url: null as string | null,
+        original_signed_urls: [] as string[],
       };
       const media = origPath
-        ? buildPublicMediaUrls(origPath, p.meme_image_url ?? null)
+        ? buildPublicMediaUrls(
+            origPath,
+            p.meme_image_url ?? null,
+            ex?.original_image_url_2 ?? null,
+          )
         : emptyMedia;
       return {
         id: p.id,
@@ -514,7 +532,7 @@ export async function fetchPostDetailAction(
     const { data: p, error: postError } = await supabase
       .from("posts")
       .select(
-        "id, user_id, project_id, caption, star_rating_avg, star_rating_count, meme_image_url, original_image_url, pipeline, pipeline_input_text, meme_type, created_at, users!user_id(username, avatar_url)",
+        "id, user_id, project_id, caption, star_rating_avg, star_rating_count, meme_image_url, original_image_url, original_image_url_2, pipeline, pipeline_input_text, meme_type, created_at, users!user_id(username, avatar_url)",
       )
       .eq("id", postId)
       .maybeSingle();
@@ -537,6 +555,7 @@ export async function fetchPostDetailAction(
     const media = buildPublicMediaUrls(
       p.original_image_url as string,
       (p.meme_image_url ?? null) as string | null,
+      (p as { original_image_url_2?: string | null }).original_image_url_2,
     );
 
     const likeRows = likesRaw ?? [];
@@ -862,7 +881,7 @@ export async function deletePostAction(postId: string): Promise<{ error?: string
 
     const { data: post } = await supabase
       .from("posts")
-      .select("meme_image_url, original_image_url, user_id")
+      .select("meme_image_url, original_image_url, original_image_url_2, user_id")
       .eq("id", postId)
       .single();
 
@@ -884,6 +903,11 @@ export async function deletePostAction(postId: string): Promise<{ error?: string
     }
     if (post.original_image_url) {
       dels.push(r2DeleteWithVariants([normalizeR2Key(post.original_image_url)]));
+    }
+    if (post.original_image_url_2) {
+      dels.push(
+        r2DeleteWithVariants([normalizeR2Key(post.original_image_url_2)]),
+      );
     }
     await Promise.all(dels);
 
@@ -972,15 +996,18 @@ async function collectLogicalPrimaryPathsToRelocate(
   authorId: string,
   originalPath: string,
   memePath: string | null,
+  originalPath2?: string | null,
 ): Promise<Set<string>> {
   const keys = new Set<string>();
   const normO = normalizeR2Key(originalPath);
+  const normO2 = originalPath2 ? normalizeR2Key(originalPath2) : null;
   const normM = memePath ? normalizeR2Key(memePath) : null;
 
   const orgScope = `${R2_ORIGINAL_PREFIX}/${oldProjectId}/${authorId}/`;
   const memScope = `${R2_MEMES_PREFIX}/${oldProjectId}/${authorId}/`;
 
   if (normO.startsWith(orgScope)) keys.add(normO);
+  if (normO2 && normO2.startsWith(orgScope)) keys.add(normO2);
   if (normM && normM.startsWith(memScope)) keys.add(normM);
 
   const { data: job } = await svc
@@ -1036,7 +1063,7 @@ export async function movePostToProjectAction(
 
   const { data: post, error: postErr } = await supabase
     .from("posts")
-    .select("id, user_id, project_id, original_image_url, meme_image_url")
+    .select("id, user_id, project_id, original_image_url, original_image_url_2, meme_image_url")
     .eq("id", postId)
     .maybeSingle();
 
@@ -1082,6 +1109,7 @@ export async function movePostToProjectAction(
     authorId,
     post.original_image_url as string,
     post.meme_image_url as string,
+    post.original_image_url_2 as string | null,
   );
 
   const expandedOldKeys = new Set<string>();
@@ -1118,6 +1146,17 @@ export async function movePostToProjectAction(
     targetProjectId,
     authorId,
   );
+  const newOriginal2 = post.original_image_url_2
+    ? remapStoredPostObjectKey(
+        normalizeR2Key(post.original_image_url_2 as string),
+        oldProjectId,
+        targetProjectId,
+        authorId,
+      )
+    : null;
+  if (post.original_image_url_2 && !newOriginal2) {
+    return { error: "Zweites Referenzfoto konnte nicht auf das Zielprojekt abgebildet werden." };
+  }
   const newMeme = remapStoredPostObjectKey(
     normalizeR2Key(post.meme_image_url as string),
     oldProjectId,
@@ -1133,6 +1172,7 @@ export async function movePostToProjectAction(
     .update({
       project_id: targetProjectId,
       original_image_url: newOriginal,
+      original_image_url_2: newOriginal2,
       meme_image_url: newMeme,
     })
     .eq("id", postId);

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { STANDARD_AI_MEME_BASE_PROMPT } from "@/lib/meme/ai-meme-master-styles";
+import { memeIdeaFromUserClause } from "@/lib/meme/ai-user-text-prompt";
 import {
   inlineImageEditProjectContext,
   loadProjectAiContextNormalized,
@@ -53,15 +55,9 @@ export async function POST(request: NextRequest) {
       type: "image/jpeg",
     });
 
-    const basePrompt =
-      "Verwandle dieses Foto in ein lustiges, teilbares Meme im Stil deutschsprachiger Internet-Memes. " +
-      "Behalte wiedererkennbare Motive. Nutze witzige Effekte und Meme-typische Elemente. " +
-      "Stil: knalliger Internet-Meme-Look. Alle sichtbaren Texte auf dem Bild müssen auf Deutsch sein (natürliche deutsche Meme-Sprache)." +
-      contextInset;
-
-    const prompt = body.userText
-      ? `${basePrompt} Meme-Idee vom Nutzer: ${body.userText}`
-      : basePrompt;
+    const basePrompt = `${STANDARD_AI_MEME_BASE_PROMPT}${contextInset}`;
+    const userClause = body.userText ? memeIdeaFromUserClause(body.userText) : "";
+    const prompt = `${basePrompt}${userClause}`;
 
     const response = await openaiClient().images.edit({
       model: "gpt-image-2",

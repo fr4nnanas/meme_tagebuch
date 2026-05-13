@@ -17,7 +17,9 @@ const DEFAULT_OUTPUT_HEIGHT = 1536;
 
 interface ImageCropperProps {
   imageSrc: string;
-  onCropComplete: (blob: Blob) => void;
+  secondImageSrc?: string | null;
+  onSecondImageSelected?: (file: File) => void;
+  onCropComplete: (primaryBlob: Blob, secondBlob?: Blob | null) => void;
   onCancel: () => void;
   /** z. B. `1` für quadratischen Avatar */
   aspectRatio?: number;
@@ -31,9 +33,6 @@ async function getCroppedBlob(
   outputWidth: number,
   outputHeight: number,
 ): Promise<Blob> {
-  // react-image-crop: PixelCrop bezieht sich auf die angezeigte Größe (clientWidth/Height).
-  // drawImage erwartet Koordinaten in natürlichen Bildpixeln — sonst nur ein kleiner
-  // Ausschnitt der Quelle → „stark reingezoomt“ bei Handy-Fotos.
   const displayW = image.clientWidth || image.width;
   const displayH = image.clientHeight || image.height;
   if (!displayW || !displayH || !image.naturalWidth || !image.naturalHeight) {
@@ -78,29 +77,22 @@ async function getCroppedBlob(
   });
 }
 
-export function ImageCropper({
-  imageSrc,
-  onCropComplete,
-  onCancel,
-  aspectRatio = DEFAULT_ASPECT_RATIO,
-  outputWidth = DEFAULT_OUTPUT_WIDTH,
-  outputHeight = DEFAULT_OUTPUT_HEIGHT,
-}: ImageCropperProps) {
+interface CropPaneProps {
+  imageSrc: string;
+  label: string;
+  aspectRatio: number;
+  onReady: (image: HTMLImageElement | null, crop: PixelCrop | undefined) => void;
+}
+
+function CropPane({ imageSrc, label, aspectRatio, onReady }: CropPaneProps) {
   const imgRef = useRef<HTMLImageElement>(null);
   const [crop, setCrop] = useState<Crop>();
-  const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
-  const [isProcessing, setIsProcessing] = useState(false);
 
   const onImageLoad = useCallback(
     (e: React.SyntheticEvent<HTMLImageElement>) => {
       const { width, height } = e.currentTarget;
       const centered = centerCrop(
-        makeAspectCrop(
-          { unit: "%", width: 90 },
-          aspectRatio,
-          width,
-          height,
-        ),
+        makeAspectCrop({ unit: "%", width: 90 }, aspectRatio, width, height),
         width,
         height,
       );
@@ -109,54 +101,166 @@ export function ImageCropper({
     [aspectRatio],
   );
 
+  return (
+    <section className="flex w-full flex-col gap-2">
+      <p className="px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+        {label}
+      </p>
+      <div className="flex min-h-0 w-full justify-center p-1 sm:p-2">
+        <ReactCrop
+          className="mx-auto max-w-full"
+          crop={crop}
+          onChange={(nextCrop) => setCrop(nextCrop)}
+          onComplete={(pixelCrop) => onReady(imgRef.current, pixelCrop)}
+          aspect={aspectRatio}
+          minWidth={60}
+          keepSelection
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            ref={imgRef}
+            src={imageSrc}
+            alt={label}
+            className="mx-auto block h-auto min-h-0 w-full min-w-0 max-w-full object-contain"
+            style={{
+              maxHeight: "min(68dvh, calc(100svh - 14rem))",
+            }}
+            onLoad={onImageLoad}
+          />
+        </ReactCrop>
+      </div>
+    </section>
+  );
+}
+
+export function ImageCropper({
+  imageSrc,
+  secondImageSrc = null,
+  onSecondImageSelected,
+  onCropComplete,
+  onCancel,
+  aspectRatio = DEFAULT_ASPECT_RATIO,
+  outputWidth = DEFAULT_OUTPUT_WIDTH,
+  outputHeight = DEFAULT_OUTPUT_HEIGHT,
+}: ImageCropperProps) {
+  const secondFileInputRef = useRef<HTMLInputElement>(null);
+  const primaryCropRef = useRef<{
+    image: HTMLImageElement | null;
+    crop: PixelCrop | undefined;
+  }>({ image: null, crop: undefined });
+  const secondCropRef = useRef<{
+    image: HTMLImageElement | null;
+    crop: PixelCrop | undefined;
+  }>({ image: null, crop: undefined });
+  const [primaryCropComplete, setPrimaryCropComplete] = useState<PixelCrop>();
+  const [secondCropComplete, setSecondCropComplete] = useState<PixelCrop>();
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handlePrimaryReady = useCallback(
+    (image: HTMLImageElement | null, crop: PixelCrop | undefined) => {
+      primaryCropRef.current = { image, crop };
+      setPrimaryCropComplete(crop);
+    },
+    [],
+  );
+
+  const handleSecondReady = useCallback(
+    (image: HTMLImageElement | null, crop: PixelCrop | undefined) => {
+      secondCropRef.current = { image, crop };
+      setSecondCropComplete(crop);
+    },
+    [],
+  );
+
   const handleConfirm = useCallback(async () => {
-    if (!imgRef.current || !completedCrop) return;
+    const primary = primaryCropRef.current;
+    if (!primary.image || !primary.crop) return;
+
+    if (secondImageSrc) {
+      const secondary = secondCropRef.current;
+      if (!secondary.image || !secondary.crop) return;
+    }
+
     setIsProcessing(true);
 
     try {
-      const blob = await getCroppedBlob(
-        imgRef.current,
-        completedCrop,
+      const primaryBlob = await getCroppedBlob(
+        primary.image,
+        primary.crop,
         outputWidth,
         outputHeight,
       );
-      onCropComplete(blob);
+
+      if (secondImageSrc) {
+        const secondary = secondCropRef.current;
+        const secondBlob = await getCroppedBlob(
+          secondary.image!,
+          secondary.crop!,
+          outputWidth,
+          outputHeight,
+        );
+        onCropComplete(primaryBlob, secondBlob);
+        return;
+      }
+
+      onCropComplete(primaryBlob);
     } catch (err) {
       console.error("Crop fehlgeschlagen:", err);
     } finally {
       setIsProcessing(false);
     }
-  }, [completedCrop, onCropComplete, outputWidth, outputHeight]);
+  }, [onCropComplete, outputWidth, outputHeight, secondImageSrc]);
+
+  const canConfirm =
+    !isProcessing &&
+    Boolean(primaryCropComplete) &&
+    (!secondImageSrc || Boolean(secondCropComplete));
 
   return (
     <div className="flex min-h-0 flex-col gap-3">
-      <div
-        className="meme-crop-viewport min-h-0 w-full max-h-[min(78dvh,calc(100svh-10rem))] overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-xl border border-zinc-800 [-webkit-overflow-scrolling:touch]"
-      >
-        <div className="flex min-h-0 w-full justify-center p-1 sm:p-2">
-          <ReactCrop
-            className="mx-auto max-w-full"
-            crop={crop}
-            onChange={(c) => setCrop(c)}
-            onComplete={(c) => setCompletedCrop(c)}
-            aspect={aspectRatio}
-            minWidth={60}
-            keepSelection
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              ref={imgRef}
-              src={imageSrc}
-              alt="Zu schneidendes Foto"
-              className="mx-auto block h-auto min-h-0 w-full min-w-0 max-w-full object-contain"
-              style={{
-                maxHeight: "min(68dvh, calc(100svh - 14rem))",
-              }}
-              onLoad={onImageLoad}
+      <div className="meme-crop-viewport min-h-0 w-full max-h-[min(78dvh,calc(100svh-10rem))] overflow-y-auto overflow-x-hidden overscroll-y-contain rounded-xl border border-zinc-800 [-webkit-overflow-scrolling:touch]">
+        <div className="flex flex-col gap-4 py-1 sm:py-2">
+          <CropPane
+            imageSrc={imageSrc}
+            label="Bild 1"
+            aspectRatio={aspectRatio}
+            onReady={handlePrimaryReady}
+          />
+
+          {secondImageSrc ? (
+            <CropPane
+              imageSrc={secondImageSrc}
+              label="Bild 2"
+              aspectRatio={aspectRatio}
+              onReady={handleSecondReady}
             />
-          </ReactCrop>
+          ) : null}
         </div>
       </div>
+
+      {onSecondImageSelected && !secondImageSrc ? (
+        <>
+          <input
+            ref={secondFileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              const input = e.target;
+              input.value = "";
+              if (file) onSecondImageSelected(file);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => secondFileInputRef.current?.click()}
+            className="rounded-full border border-zinc-700 py-3 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
+          >
+            Zweites Bild hinzufügen
+          </button>
+        </>
+      ) : null}
 
       <div className="flex gap-3">
         <button
@@ -169,7 +273,7 @@ export function ImageCropper({
         <button
           type="button"
           onClick={() => void handleConfirm()}
-          disabled={!completedCrop || isProcessing}
+          disabled={!canConfirm}
           className="flex-1 rounded-full bg-orange-500 py-3 text-sm font-semibold text-white transition-colors hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isProcessing ? "Verarbeite..." : "Zuschnitt übernehmen"}

@@ -61,13 +61,13 @@ interface ProfilePostDetailSheetProps {
   /** Thumbnail-/Lightbox-URL für sofortiges Bild während Laden */
   fallbackImageSrc: string | null;
   /** Original-Signed-URL aus Raster — gleiche Wisch-Reihenfolge wie im Feed ohne Warten auf Detail */
-  fallbackOriginalSrc?: string | null;
+  fallbackOriginalSrc?: string | string[] | null;
   currentUserId: string;
   /** Eingeloggter Nutzer ist Admin (Verschieben fremder Posts) */
   isAdmin?: boolean;
   /**
-   * Wenn true (Raster/Profil): direkt die schwebende Lightbox; volles Detail-Sheet
-   * erst nach „Kommentar schreiben“, „Alle Details & Kommentare“ oder bei Ladefehler.
+   * Wenn true (Raster/Profil): zuerst die schwebende Lightbox; Detail-Sheet mit Kommentaren
+   * wird parallel geladen und liegt nach Schließen der Lightbox bereit.
    */
   entryAsLightbox?: boolean;
   onClose: () => void;
@@ -150,7 +150,7 @@ export function ProfilePostDetailSheet({
     setMoveDialogOpen(false);
     if (entryAsLightbox) {
       setLightboxOpen(true);
-      setSheetRevealed(false);
+      setSheetRevealed(true);
     } else {
       setLightboxOpen(false);
     }
@@ -407,7 +407,7 @@ export function ProfilePostDetailSheet({
     (jobPollDetail?.status === "pending" ||
       jobPollDetail?.status === "processing");
 
-  /** Wie Feed-Card: Kommentar, Like, Bewertung, Teilen — Liker-Liste über Avatare auf dem Bild */
+  /** Wie Feed-Card: Kommentar, Like, Bewertung, Teilen — Liker-Avatare neben dem Like-Herz */
   const postSocialActionsEl =
     !isLoadingDetail && post ? (
       <div className="mx-auto flex w-full max-w-lg items-center gap-1.5 px-1">
@@ -444,6 +444,12 @@ export function ProfilePostDetailSheet({
               {optimisticLike.count}
             </span>
           </button>
+
+          <PostRecentLikersOnImage
+            likers={post.recent_likers}
+            likeCount={optimisticLike.count}
+            onOpenList={() => setLikersOpen(true)}
+          />
         </div>
 
         {post.meme_image_url ? (
@@ -514,7 +520,11 @@ export function ProfilePostDetailSheet({
         open={lightboxOpen}
         onClose={handleLightboxRequestClose}
         memeSrc={post?.meme_full_url ?? post?.signed_url ?? fallbackImageSrc}
-        originalSrc={post?.original_signed_url ?? fallbackOriginalSrc ?? null}
+        originalSrc={
+          post?.original_signed_urls?.length
+            ? post.original_signed_urls
+            : (post?.original_signed_url ?? fallbackOriginalSrc ?? null)
+        }
         historySync={!entryAsLightbox || sheetRevealed}
         footer={
           postSocialActionsEl ||
@@ -533,15 +543,15 @@ export function ProfilePostDetailSheet({
                   </button>
                 </div>
               ) : null}
+              {entryAsLightbox && post && post.meme_image_url ? (
+                <MemePromptDisclosure pipelineInputText={post.pipeline_input_text} />
+              ) : null}
               {postSocialActionsEl}
               {entryAsLightbox && post ? (
                 <div className="flex justify-center border-t border-zinc-800/80 px-2 pb-1 pt-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setSheetRevealed(true);
-                      setLightboxOpen(false);
-                    }}
+                    onClick={() => setLightboxOpen(false)}
                     className="text-xs font-medium text-zinc-400 underline-offset-2 hover:text-orange-400 hover:underline"
                   >
                     Alle Details & Kommentare
@@ -647,13 +657,6 @@ export function ProfilePostDetailSheet({
                       alt="Meme"
                       className="h-full w-full object-cover"
                     />
-                    {post ? (
-                      <PostRecentLikersOnImage
-                        likers={post.recent_likers}
-                        likeCount={optimisticLike.count}
-                        onOpenList={() => setLikersOpen(true)}
-                      />
-                    ) : null}
                   </button>
                 ) : (
                   <div className="flex h-full min-h-[200px] w-full items-center justify-center">

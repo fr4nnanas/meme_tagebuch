@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
 
     const body = (await request.json()) as {
       imageBase64: string;
+      secondImageBase64?: string;
       hints?: string;
       projectId?: string;
     };
@@ -61,6 +62,10 @@ export async function POST(request: NextRequest) {
 Vorgegebene Meme-Formate/Typen (Taxonomie — für jeden Vorschlag mindestens eines davon aufgreifen oder klar zuordenbar machen; über alle vier Ideen verteilt verschiedene Formate nutzen):
 ${memeFormatTaxonomyBlock()}`;
 
+    const dualPhotoNote = body.secondImageBase64
+      ? "\nEs liegen zwei Referenzfotos vor; beziehe beide inhaltlich in alle vier Ideen ein."
+      : "";
+
     const response = await openaiClient().chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -74,9 +79,20 @@ ${memeFormatTaxonomyBlock()}`;
                 detail: "low",
               },
             },
+            ...(body.secondImageBase64
+              ? [
+                  {
+                    type: "image_url" as const,
+                    image_url: {
+                      url: `data:image/jpeg;base64,${body.secondImageBase64}`,
+                      detail: "low" as const,
+                    },
+                  },
+                ]
+              : []),
             {
               type: "text",
-              text: `Analysiere dieses Bild und generiere 4 verschiedene, witzige Meme-Ideen dafür.${projectContextBlock}${hintsBlock}${taxonomyBlock}
+              text: `Analysiere ${body.secondImageBase64 ? "diese beiden Bilder" : "dieses Bild"} und generiere 4 verschiedene, witzige Meme-Ideen dafür.${projectContextBlock}${hintsBlock}${dualPhotoNote}${taxonomyBlock}
 
 Antworte NUR mit einem JSON-Objekt: {"ideas": ["Idee 1", "Idee 2", "Idee 3", "Idee 4"]}
 Jede Idee ist eine kurze Beschreibung des Meme-Konzepts (max. 15 Wörter) und benennt in Klammern oder Kurzform das gewählte Format aus der Taxonomie (z. B. „… (Reaction Face)“).

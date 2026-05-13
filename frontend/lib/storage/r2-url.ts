@@ -30,6 +30,16 @@ export function originalObjectKey(
   );
 }
 
+export function originalReference2ObjectKey(
+  projectId: string,
+  userId: string,
+  postId: string,
+): string {
+  return normalizeR2Key(
+    `${R2_ORIGINAL_PREFIX}/${projectId}/${userId}/${postId}_ref2.jpg`,
+  );
+}
+
 export function memeAiVariantObjectKey(
   projectId: string,
   userId: string,

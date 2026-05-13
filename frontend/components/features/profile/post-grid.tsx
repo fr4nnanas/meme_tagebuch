@@ -18,6 +18,11 @@ import {
   PostStarRating,
   type PostStarRatingSnapshot,
 } from "@/components/shared/post-star-rating";
+import { GridPostThumbnail } from "@/components/shared/grid-post-thumbnail";
+import {
+  POST_GRID_PAGE_SIZE,
+  resolvePostGridThumbUrls,
+} from "@/lib/meme/post-grid-media";
 import { normalizeR2Key, safeR2Url } from "@/lib/storage/r2-url";
 import { fetchMyStarRatingsForPostIds } from "@/lib/meme/fetch-my-star-ratings";
 import { useLoadMoreOnIntersect } from "@/hooks/use-load-more-on-intersect";
@@ -34,12 +39,15 @@ interface PostThumb {
   id: string;
   meme_image_url: string | null;
   original_image_url: string;
+  original_image_url_2?: string | null;
   created_at: string;
   star_rating_avg: number | null;
   star_rating_count: number;
   my_star_rating: number | null;
   signed_url: string | null;
   original_signed_url: string | null;
+  original_signed_urls: string[];
+  full_fallback_url: string | null;
 }
 
 interface FetchResult {
@@ -50,7 +58,7 @@ interface FetchResult {
   hasMore: boolean;
 }
 
-const GRID_PAGE_SIZE = 60;
+const GRID_PAGE_SIZE = POST_GRID_PAGE_SIZE;
 
 export function PostGrid({
   userId,
@@ -73,13 +81,19 @@ export function PostGrid({
   const detailFallbackSrc = useMemo(() => {
     if (!detailPostId || !result?.posts.length) return null;
     const thumb = result.posts.find((p) => p.id === detailPostId);
-    return thumb ? (thumb.signed_url ?? thumb.original_signed_url) : null;
+    return thumb
+      ? (thumb.full_fallback_url ??
+          thumb.signed_url ??
+          thumb.original_signed_url)
+      : null;
   }, [detailPostId, result?.posts]);
 
   const detailFallbackOriginalSrc = useMemo(() => {
     if (!detailPostId || !result?.posts.length) return null;
     const thumb = result.posts.find((p) => p.id === detailPostId);
-    return thumb?.original_signed_url ?? null;
+    return thumb?.original_signed_urls?.length
+      ? thumb.original_signed_urls
+      : (thumb?.original_signed_url ?? null);
   }, [detailPostId, result?.posts]);
 
   const closePostDetail = useCallback(() => {
@@ -124,7 +138,7 @@ export function PostGrid({
         const { data, error } = await supabase
           .from("posts")
           .select(
-            "id, meme_image_url, original_image_url, created_at, star_rating_avg, star_rating_count",
+            "id, meme_image_url, original_image_url, original_image_url_2, created_at, star_rating_avg, star_rating_count",
           )
           .eq("user_id", userId)
           .eq("project_id", projectId)
@@ -146,6 +160,7 @@ export function PostGrid({
           id: string;
           meme_image_url: string | null;
           original_image_url: string;
+          original_image_url_2?: string | null;
           created_at: string;
           star_rating_avg?: number | null;
           star_rating_count?: number | null;
@@ -153,37 +168,44 @@ export function PostGrid({
 
         const rows = (data ?? []) as RawRow[];
         const postIds = rows.map((r) => r.id);
-        const myStars =
-          postIds.length > 0
-            ? await fetchMyStarRatingsForPostIds(
-                supabase,
-                currentUserId,
-                postIds,
-              )
-            : new Map<string, number | null>();
 
-        const posts: Omit<PostThumb, "signed_url" | "original_signed_url">[] =
-          rows.map((row) => {
-            const cnt = Number(row.star_rating_count ?? 0);
-            return {
-              id: row.id,
-              meme_image_url: row.meme_image_url,
-              original_image_url: row.original_image_url,
-              created_at: row.created_at,
-              star_rating_avg:
-                row.star_rating_avg != null ? Number(row.star_rating_avg) : null,
-              star_rating_count: Number.isFinite(cnt) ? cnt : 0,
-              my_star_rating: myStars.get(row.id) ?? null,
-            };
-          });
+        const posts: Omit<
+          PostThumb,
+          "signed_url" | "original_signed_url" | "original_signed_urls" | "full_fallback_url"
+        >[] = rows.map((row) => {
+          const cnt = Number(row.star_rating_count ?? 0);
+          return {
+            id: row.id,
+            meme_image_url: row.meme_image_url,
+            original_image_url: row.original_image_url,
+            original_image_url_2: row.original_image_url_2 ?? null,
+            created_at: row.created_at,
+            star_rating_avg:
+              row.star_rating_avg != null ? Number(row.star_rating_avg) : null,
+            star_rating_count: Number.isFinite(cnt) ? cnt : 0,
+            my_star_rating: null,
+          };
+        });
 
         const postsWithUrls: PostThumb[] = posts.map((p) => {
-          const o = normalizeR2Key(p.original_image_url);
-          const m = p.meme_image_url ? normalizeR2Key(p.meme_image_url) : null;
+          const { thumb_url, full_fallback_url } = resolvePostGridThumbUrls(
+            p.meme_image_url,
+            p.original_image_url,
+          );
+          const originalKey = normalizeR2Key(p.original_image_url);
+          const originalKey2 = p.original_image_url_2
+            ? normalizeR2Key(p.original_image_url_2)
+            : null;
+          const originalSignedUrls = [
+            safeR2Url(originalKey, "full"),
+            ...(originalKey2 ? [safeR2Url(originalKey2, "full")] : []),
+          ].filter((url): url is string => Boolean(url));
           return {
             ...p,
-            signed_url: m ? safeR2Url(m, "thumb") : safeR2Url(o, "thumb"),
-            original_signed_url: safeR2Url(o, "full"),
+            signed_url: thumb_url,
+            full_fallback_url,
+            original_signed_url: originalSignedUrls[0] ?? null,
+            original_signed_urls: originalSignedUrls,
           };
         });
 
@@ -200,11 +222,50 @@ export function PostGrid({
             hasMore: rows.length === GRID_PAGE_SIZE,
           };
         });
+
+        if (postIds.length > 0) {
+          void fetchMyStarRatingsForPostIds(
+            supabase,
+            currentUserId,
+            postIds,
+          ).then((myStars) => {
+            setResult((prev) => {
+              if (!prev || prev.projectId !== projectId) return prev;
+              const idSet = new Set(postIds);
+              return {
+                ...prev,
+                posts: prev.posts.map((post) =>
+                  idSet.has(post.id)
+                    ? {
+                        ...post,
+                        my_star_rating: myStars.get(post.id) ?? null,
+                      }
+                    : post,
+                ),
+              };
+            });
+          });
+        }
       } finally {
         setIsLoading(false);
       }
     },
     [userId, currentUserId],
+  );
+
+  const handleLoadMore = useCallback(() => {
+    if (!activeProjectId) return;
+    if (!result?.hasMore) return;
+    startLoadMoreTransition(() => {
+      void loadPosts(activeProjectId, (result?.page ?? 0) + 1, true);
+    });
+  }, [activeProjectId, loadPosts, result?.hasMore, result?.page]);
+
+  const loadMoreSentinelRef = useLoadMoreOnIntersect(
+    Boolean(activeProjectId && result?.hasMore && (result?.posts.length ?? 0) > 0),
+    Boolean(result?.hasMore),
+    isLoading || isLoadingMore,
+    handleLoadMore,
   );
 
   useEffect(() => {
@@ -280,26 +341,10 @@ export function PostGrid({
     );
   }
 
-  const handleLoadMore = useCallback(() => {
-    if (!activeProjectId) return;
-    if (!result?.hasMore) return;
-    startLoadMoreTransition(() => {
-      void loadPosts(activeProjectId, (result?.page ?? 0) + 1, true);
-    });
-  }, [activeProjectId, loadPosts, result?.hasMore, result?.page]);
-
-  const loadMoreSentinelRef = useLoadMoreOnIntersect(
-    Boolean(activeProjectId && result.hasMore && result.posts.length > 0),
-    result.hasMore,
-    isLoading || isLoadingMore,
-    handleLoadMore,
-  );
-
   return (
     <>
       <div className="grid grid-cols-3 gap-1">
         {result.posts.map((post) => {
-          const displaySrc = post.signed_url ?? post.original_signed_url;
           const isDeleting = deletingId === post.id;
           const isPending = !post.meme_image_url;
 
@@ -309,16 +354,15 @@ export function PostGrid({
               className="group flex flex-col overflow-hidden rounded-md border border-zinc-800/80 bg-zinc-800 shadow-sm"
             >
               <div className="relative aspect-[2/3] w-full shrink-0 bg-zinc-900/40">
-                {displaySrc ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={displaySrc}
+                {post.signed_url || post.full_fallback_url ? (
+                  <GridPostThumbnail
+                    key={`${post.id}:${post.signed_url ?? ""}`}
+                    thumbSrc={post.signed_url}
+                    fallbackSrc={post.full_fallback_url}
                     alt="Post"
-                    loading="lazy"
                     onClick={() => openPostDetail(post.id)}
-                    className={`absolute inset-0 h-full w-full cursor-pointer object-cover transition-opacity active:opacity-75 ${
-                      isPending ? "opacity-50" : ""
-                    }`}
+                    className="absolute inset-0 h-full w-full cursor-pointer object-cover transition-opacity active:opacity-75"
+                    dimmed={isPending}
                   />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-zinc-700">
