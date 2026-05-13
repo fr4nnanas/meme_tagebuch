@@ -1,12 +1,11 @@
 "use client";
 
+import { useRef, useState, type ReactNode } from "react";
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+  HORIZONTAL_PAGE_SCROLLER_CLASS,
+  horizontalPageSlideClassName,
+  useHorizontalPageSnap,
+} from "@/lib/ui/use-horizontal-page-snap";
 
 export interface SnapScrollerSlide {
   key?: string;
@@ -38,18 +37,16 @@ export function HorizontalSnapScroller({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  const syncActiveIndexFromScroll = useCallback(() => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    const page = Math.round(el.scrollLeft / Math.max(1, el.clientWidth));
-    const next = Math.min(Math.max(page, 0), Math.max(0, slides.length - 1));
+  const handleActiveIndexChange = (next: number) => {
     setActiveIndex(next);
     onActiveIndexChange?.(next);
-  }, [onActiveIndexChange, slides.length]);
+  };
 
-  useEffect(() => {
-    syncActiveIndexFromScroll();
-  }, [slides, syncActiveIndexFromScroll]);
+  const { onScrollerScroll } = useHorizontalPageSnap(
+    scrollerRef,
+    slides.length,
+    handleActiveIndexChange,
+  );
 
   if (slides.length === 0) return null;
 
@@ -72,18 +69,15 @@ export function HorizontalSnapScroller({
     <div className={`relative ${className ?? ""}`}>
       <div
         ref={scrollerRef}
-        onScroll={syncActiveIndexFromScroll}
-        className={
-          scrollerClassName ??
-          "flex w-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        }
+        onScroll={onScrollerScroll}
+        className={scrollerClassName ?? HORIZONTAL_PAGE_SCROLLER_CLASS}
         role="region"
         aria-label="Bilder horizontal blättern"
       >
         {slides.map((slide, index) => (
           <div
             key={slide.key ?? `${slide.src}-${index}`}
-            className={`relative shrink-0 snap-start ${slideClassName ?? "w-full"}`}
+            className={horizontalPageSlideClassName(slideClassName ?? "w-full")}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={slide.src} alt={slide.alt} className={imgClassName} />

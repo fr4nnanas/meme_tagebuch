@@ -1,6 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
+import {
+  HORIZONTAL_PAGE_SCROLLER_CLASS,
+  horizontalPageSlideClassName,
+  useHorizontalPageSnap,
+} from "@/lib/ui/use-horizontal-page-snap";
 import {
   coerceOriginalSources,
   originalPageLabel,
@@ -36,17 +41,13 @@ export function FeedMediaStrip({
   const stripScrollRef = useRef<HTMLDivElement>(null);
   const [activePage, setActivePage] = useState(0);
   const originals = coerceOriginalSources(originalSrc);
+  const pageCount = 1 + originals.length;
 
-  const syncActivePageFromScroll = useCallback(() => {
-    const el = stripScrollRef.current;
-    if (!el) return;
-    const page = Math.round(el.scrollLeft / Math.max(1, el.clientWidth));
-    setActivePage(page);
-  }, []);
-
-  useEffect(() => {
-    syncActivePageFromScroll();
-  }, [memeSrc, originalSrc, syncActivePageFromScroll]);
+  const { onScrollerScroll } = useHorizontalPageSnap(
+    stripScrollRef,
+    pageCount,
+    setActivePage,
+  );
 
   const tryRegisterDoubleTap = useCallback(() => {
     const now = Date.now();
@@ -113,12 +114,12 @@ export function FeedMediaStrip({
     >
       <div
         ref={stripScrollRef}
-        onScroll={syncActivePageFromScroll}
-        className="flex h-full w-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        onScroll={onScrollerScroll}
+        className={`${HORIZONTAL_PAGE_SCROLLER_CLASS} h-full`}
         aria-label="Meme; nach links wischen für Originalfoto"
         role="region"
       >
-        <div className="relative h-full w-full shrink-0 snap-start">
+        <div className={horizontalPageSlideClassName("h-full w-full")}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={memeSrc}
@@ -132,7 +133,7 @@ export function FeedMediaStrip({
         {originals.map((src, index) => (
           <div
             key={`${src}-${index}`}
-            className="relative h-full w-full shrink-0 snap-start"
+            className={horizontalPageSlideClassName("h-full w-full")}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
