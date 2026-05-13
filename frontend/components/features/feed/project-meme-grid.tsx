@@ -15,11 +15,13 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ImageIcon, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
+import { normalizeR2Key, safeR2Url } from "@/lib/storage/r2-url";
 import { deletePostAction } from "@/lib/actions/feed";
 import { ProfilePostDetailSheet } from "@/components/features/profile/profile-post-detail-sheet";
 import { useActiveProject } from "@/components/features/app/project-context";
 import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
 import { fetchMyStarRatingsForPostIds } from "@/lib/meme/fetch-my-star-ratings";
+import { useLoadMoreOnIntersect } from "@/hooks/use-load-more-on-intersect";
 
 interface ProjectMemeGridProps {
   currentUserId: string;
@@ -45,7 +47,11 @@ interface FetchResult {
   projectId: string;
   posts: PostThumb[];
   error: string | null;
+  page: number;
+  hasMore: boolean;
 }
+
+const GRID_PAGE_SIZE = 60;
 
 export function ProjectMemeGrid({
   currentUserId,
@@ -59,6 +65,8 @@ export function ProjectMemeGrid({
   const [gridSort, setGridSort] = useState<MemeStarSortMode>("created_desc");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [, startDeleteTransition] = useTransition();
+  const [isLoadingMore, startLoadMoreTransition] = useTransition();
+  const [isLoading, setIsLoading] = useState(false);
 
   const detailPostId = searchParams.get("post");
 
@@ -109,115 +117,116 @@ export function ProjectMemeGrid({
     [router, pathname, searchParams],
   );
 
-  const loadPosts = useCallback(async (projectId: string) => {
+  const loadPosts = useCallback(async (projectId: string, targetPage: number, append: boolean) => {
     const supabase = createClient();
+    setIsLoading(true);
 
-    const { data, error } = await supabase
-      .from("posts")
-      .select(
-        "id, user_id, meme_image_url, original_image_url, created_at, star_rating_avg, star_rating_count, users!user_id(username, avatar_url)",
-      )
-      .eq("project_id", projectId)
-      .order("created_at", { ascending: false });
+    try {
+      const from = targetPage * GRID_PAGE_SIZE;
+      const to = from + GRID_PAGE_SIZE - 1;
 
-    if (error) {
-      setResult({ projectId, posts: [], error: "Posts konnten nicht geladen werden." });
-      return;
-    }
+      const { data, error } = await supabase
+        .from("posts")
+        .select(
+          "id, user_id, meme_image_url, original_image_url, created_at, star_rating_avg, star_rating_count, users!user_id(username, avatar_url)",
+        )
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false })
+        .range(from, to);
 
-    type RawPost = Omit<
-      PostThumb,
-      | "signed_url"
-      | "original_signed_url"
-      | "username"
-      | "avatar_url"
-      | "star_rating_avg"
-      | "star_rating_count"
-      | "my_star_rating"
-    > & {
-      users: { username: string; avatar_url: string | null } | { username: string; avatar_url: string | null }[] | null;
-      star_rating_avg?: number | null;
-      star_rating_count?: number | null;
-    };
+      if (error) {
+        setResult({
+          projectId,
+          posts: [],
+          error: "Posts konnten nicht geladen werden.",
+          page: 0,
+          hasMore: false,
+        });
+        return;
+      }
 
-    const postsRaw = (data ?? []) as RawPost[];
-
-    const postIds = postsRaw.map((p) => p.id);
-    const myStars = await fetchMyStarRatingsForPostIds(
-      supabase,
-      currentUserId,
-      postIds,
-    );
-
-    const posts: Omit<PostThumb, "signed_url" | "original_signed_url">[] = postsRaw.map((p) => {
-      const rawUser = p.users;
-      const u = Array.isArray(rawUser) ? rawUser[0] : rawUser;
-      const cnt = Number(p.star_rating_count ?? 0);
-      return {
-        id: p.id,
-        user_id: p.user_id,
-        meme_image_url: p.meme_image_url,
-        original_image_url: p.original_image_url,
-        created_at: p.created_at,
-        star_rating_avg:
-          p.star_rating_avg != null ? Number(p.star_rating_avg) : null,
-        star_rating_count: Number.isFinite(cnt) ? cnt : 0,
-        my_star_rating: myStars.get(p.id) ?? null,
-        username: u?.username ?? "Unbekannt",
-        avatar_url: u?.avatar_url ?? null,
+      type RawPost = Omit<
+        PostThumb,
+        | "signed_url"
+        | "original_signed_url"
+        | "username"
+        | "avatar_url"
+        | "star_rating_avg"
+        | "star_rating_count"
+        | "my_star_rating"
+      > & {
+        users:
+          | { username: string; avatar_url: string | null }
+          | { username: string; avatar_url: string | null }[]
+          | null;
+        star_rating_avg?: number | null;
+        star_rating_count?: number | null;
       };
-    });
 
-    const memePaths = posts
-      .filter((p) => p.meme_image_url)
-      .map((p) => p.meme_image_url as string);
+      const postsRaw = (data ?? []) as RawPost[];
 
-    const originalPaths = [
-      ...new Set(posts.map((p) => p.original_image_url).filter(Boolean)),
-    ];
+      const postIds = postsRaw.map((p) => p.id);
+      const myStars =
+        postIds.length > 0
+          ? await fetchMyStarRatingsForPostIds(
+              supabase,
+              currentUserId,
+              postIds,
+            )
+          : new Map<string, number | null>();
 
-    const memeSignedMap: Record<string, string> = {};
-    const originalSignedMap: Record<string, string> = {};
-
-    if (memePaths.length > 0) {
-      const { data: signed } = await supabase.storage
-        .from("memes")
-        .createSignedUrls(memePaths, 3600);
-      if (signed) {
-        memePaths.forEach((path, i) => {
-          const su = signed[i];
-          if (su?.signedUrl) memeSignedMap[path] = su.signedUrl;
+      const posts: Omit<PostThumb, "signed_url" | "original_signed_url">[] =
+        postsRaw.map((p) => {
+          const rawUser = p.users;
+          const u = Array.isArray(rawUser) ? rawUser[0] : rawUser;
+          const cnt = Number(p.star_rating_count ?? 0);
+          return {
+            id: p.id,
+            user_id: p.user_id,
+            meme_image_url: p.meme_image_url,
+            original_image_url: p.original_image_url,
+            created_at: p.created_at,
+            star_rating_avg:
+              p.star_rating_avg != null ? Number(p.star_rating_avg) : null,
+            star_rating_count: Number.isFinite(cnt) ? cnt : 0,
+            my_star_rating: myStars.get(p.id) ?? null,
+            username: u?.username ?? "Unbekannt",
+            avatar_url: u?.avatar_url ?? null,
+          };
         });
-      }
+
+      const postsWithUrls: PostThumb[] = posts.map((p) => {
+        const o = normalizeR2Key(p.original_image_url);
+        const m = p.meme_image_url ? normalizeR2Key(p.meme_image_url) : null;
+        return {
+          ...p,
+          signed_url: m ? safeR2Url(m, "thumb") : safeR2Url(o, "thumb"),
+          original_signed_url: safeR2Url(o, "full"),
+        };
+      });
+
+      setResult((prev) => {
+        const nextPosts =
+          append && prev?.projectId === projectId
+            ? [...prev.posts, ...postsWithUrls]
+            : postsWithUrls;
+        return {
+          projectId,
+          posts: nextPosts,
+          error: null,
+          page: targetPage,
+          hasMore: postsRaw.length === GRID_PAGE_SIZE,
+        };
+      });
+    } finally {
+      setIsLoading(false);
     }
-
-    if (originalPaths.length > 0) {
-      const { data: signed } = await supabase.storage
-        .from("originals")
-        .createSignedUrls(originalPaths, 3600);
-      if (signed) {
-        originalPaths.forEach((path, i) => {
-          const su = signed[i];
-          if (su?.signedUrl) originalSignedMap[path] = su.signedUrl;
-        });
-      }
-    }
-
-    const postsWithUrls: PostThumb[] = posts.map((p) => ({
-      ...p,
-      signed_url: p.meme_image_url ? (memeSignedMap[p.meme_image_url] ?? null) : null,
-      original_signed_url: p.original_image_url
-        ? (originalSignedMap[p.original_image_url] ?? null)
-        : null,
-    }));
-
-    setResult({ projectId, posts: postsWithUrls, error: null });
   }, [currentUserId]);
 
   useEffect(() => {
     if (!activeProjectId) return;
     setResult(null);
-    void loadPosts(activeProjectId);
+    void loadPosts(activeProjectId, 0, false);
   }, [activeProjectId, loadPosts]);
 
   useEffect(() => {
@@ -261,7 +270,22 @@ export function ProjectMemeGrid({
     );
   }
 
-  const isLoading = result === null || result.projectId !== activeProjectId;
+  const initialLoading = result === null || result.projectId !== activeProjectId;
+
+  const handleLoadMore = useCallback(() => {
+    if (!activeProjectId) return;
+    if (!result?.hasMore) return;
+    startLoadMoreTransition(() => {
+      void loadPosts(activeProjectId, (result?.page ?? 0) + 1, true);
+    });
+  }, [activeProjectId, loadPosts, result?.hasMore, result?.page]);
+
+  const loadMoreSentinelRef = useLoadMoreOnIntersect(
+    Boolean(activeProjectId && result?.hasMore && (result?.posts.length ?? 0) > 0),
+    Boolean(result?.hasMore),
+    isLoading || isLoadingMore,
+    handleLoadMore,
+  );
 
   return (
     <div className="flex flex-col pb-6">
@@ -289,7 +313,7 @@ export function ProjectMemeGrid({
         Caption und Kommentare.
       </p>
 
-      {!isLoading && result && !result.error && result.posts.length > 0 && (
+      {!initialLoading && result && !result.error && result.posts.length > 0 && (
         <div className="mt-4 px-4">
           <label htmlFor="raster-sort" className="sr-only">
             Sortierung
@@ -307,19 +331,19 @@ export function ProjectMemeGrid({
         </div>
       )}
 
-      {isLoading && (
+      {initialLoading && (
         <div className="flex items-center justify-center py-16 text-zinc-400">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       )}
 
-      {!isLoading && result?.error && (
+      {!initialLoading && result?.error && (
         <div className="mt-6 px-4">
           <EmptyState title="Fehler" description={result.error} />
         </div>
       )}
 
-      {!isLoading && result && !result.error && result.posts.length === 0 && (
+      {!initialLoading && result && !result.error && result.posts.length === 0 && (
         <div className="mt-6 px-4">
           <EmptyState
             title="Noch keine Memes"
@@ -332,7 +356,7 @@ export function ProjectMemeGrid({
         </div>
       )}
 
-      {!isLoading && result && !result.error && result.posts.length > 0 && (
+      {!initialLoading && result && !result.error && result.posts.length > 0 && (
         <div className="mt-6 px-1">
           <div className="grid grid-cols-3 gap-1">
             {displayedPosts.map((post) => {
@@ -428,6 +452,18 @@ export function ProjectMemeGrid({
               );
             })}
           </div>
+        </div>
+      )}
+
+      {result?.hasMore && (result?.posts.length ?? 0) > 0 && (
+        <div className="mt-4 flex flex-col items-center px-2 pb-2">
+          <div ref={loadMoreSentinelRef} className="h-2 w-full" aria-hidden />
+          {(isLoadingMore || isLoading) && (
+            <div className="flex h-10 items-center gap-2 text-sm text-zinc-400" aria-live="polite">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              Lädt…
+            </div>
+          )}
         </div>
       )}
 

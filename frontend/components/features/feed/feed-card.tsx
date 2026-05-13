@@ -114,7 +114,8 @@ export function FeedCard({
 
   useEffect(() => {
     const el = articleRef.current;
-    if (!el || !post.signed_url || viewTracked.current) return;
+    const hasMemeInline = Boolean(post.meme_full_url ?? post.signed_url);
+    if (!el || !hasMemeInline || viewTracked.current) return;
 
     const io = new IntersectionObserver(
       (entries) => {
@@ -133,7 +134,7 @@ export function FeedCard({
 
     io.observe(el);
     return () => io.disconnect();
-  }, [post.id, post.signed_url, onMarkedViewed]);
+  }, [post.id, post.meme_full_url, post.signed_url, onMarkedViewed]);
 
   function handleLike() {
     if (isLiking) return;
@@ -188,10 +189,11 @@ export function FeedCard({
   }
 
   function handleShareMeme() {
-    if (!post.signed_url || isSharing) return;
+    const shareSrc = post.meme_full_url ?? post.signed_url;
+    if (!shareSrc || isSharing) return;
     startShareTransition(async () => {
       const outcome = await shareMemeFromPost({
-        imageUrl: post.signed_url,
+        imageUrl: shareSrc,
         username: post.user.username,
         userId: post.user_id,
         caption: currentCaption ?? post.caption ?? null,
@@ -298,9 +300,9 @@ export function FeedCard({
 
         {/* Meme / Original: wischen, Doppeltipp = Like */}
         <div className="aspect-[2/3] w-full overflow-hidden bg-zinc-800">
-          {post.signed_url ? (
+          {post.meme_full_url || post.signed_url ? (
             <FeedMediaStrip
-              memeSrc={post.signed_url}
+              memeSrc={(post.meme_full_url ?? post.signed_url)!}
               originalSrc={post.original_signed_url}
               onDoubleTapLike={handleLike}
               memeOverlay={
@@ -381,7 +383,7 @@ export function FeedCard({
           <button
             type="button"
             onClick={handleShareMeme}
-            disabled={isSharing || !post.signed_url}
+            disabled={isSharing || !(post.meme_full_url ?? post.signed_url)}
             aria-label="Meme teilen"
             className="flex h-10 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3"
           >

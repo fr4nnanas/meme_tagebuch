@@ -3,6 +3,17 @@
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
+  memePublishedObjectKey,
+  normalizeR2Key,
+  originalObjectKey,
+  r2Url,
+} from "@/lib/storage/r2-url";
+import { r2DeleteWithVariants } from "@/lib/storage/r2";
+import {
+  uploadMemeJpegWithWebpVariants,
+  uploadOriginalJpegWithThumb,
+} from "@/lib/storage/image-pipeline";
+import {
   appendSecondAiVariantToJob,
   processJob,
   type JobResult,
@@ -261,18 +272,12 @@ export async function startMemeJob(
       ? postIdResult.data
       : crypto.randomUUID();
 
-  const originalPath = `${projectId}/${user.id}/${postId}.jpg`;
+  const originalPath = originalObjectKey(projectId, user.id, postId);
 
-  // Original in 'originals' Bucket hochladen
-  const { error: uploadError } = await supabase.storage
-    .from("originals")
-    .upload(originalPath, imageBuffer, {
-      contentType: "image/jpeg",
-      upsert: false,
-    });
-
-  if (uploadError) {
-    return { error: `Upload fehlgeschlagen: ${uploadError.message}` };
+  try {
+    await uploadOriginalJpegWithThumb(originalPath, imageBuffer);
+  } catch {
+    return { error: "Upload fehlgeschlagen (Speicher)." };
   }
 
   // Post-Eintrag anlegen (meme_image_url = null solange Job läuft)
@@ -296,8 +301,7 @@ export async function startMemeJob(
     .single();
 
   if (postError || !post) {
-    // Cleanup: hochgeladenes Bild wieder löschen
-    await supabase.storage.from("originals").remove([originalPath]);
+    await r2DeleteWithVariants([originalPath]);
     return { error: `Post konnte nicht erstellt werden: ${postError?.message}` };
   }
 
@@ -380,11 +384,10 @@ export async function getMemeRetryDraftAction(
     return { ok: false, error: "Post ist bereits veröffentlicht" };
   }
 
-  const { data: signed } = await supabase.storage
-    .from("originals")
-    .createSignedUrl(post.original_image_url, 3600);
-
-  if (!signed?.signedUrl) {
+  let originalSignedUrl: string;
+  try {
+    originalSignedUrl = r2Url(normalizeR2Key(post.original_image_url), "full");
+  } catch {
     return { ok: false, error: "Bild-Link konnte nicht erstellt werden" };
   }
 
@@ -392,7 +395,7 @@ export async function getMemeRetryDraftAction(
     ok: true,
     postId: post.id,
     projectId: post.project_id,
-    originalSignedUrl: signed.signedUrl,
+    originalSignedUrl,
     memeType: post.meme_type as "ai_generated" | "canvas_overlay",
     pipeline: post.pipeline as "direct" | "assisted" | "manual",
     pipelineInputText: post.pipeline_input_text ?? null,
@@ -489,15 +492,10 @@ export async function retryMemeJobFromDraftAction(
   const imageBytes = await croppedImageFile.arrayBuffer();
   const imageBuffer = Buffer.from(imageBytes);
 
-  const { error: uploadError } = await supabase.storage
-    .from("originals")
-    .upload(originalPath, imageBuffer, {
-      contentType: "image/jpeg",
-      upsert: true,
-    });
-
-  if (uploadError) {
-    return { error: `Upload fehlgeschlagen: ${uploadError.message}` };
+  try {
+    await uploadOriginalJpegWithThumb(normalizeR2Key(originalPath), imageBuffer);
+  } catch {
+    return { error: "Upload fehlgeschlagen (Speicher)." };
   }
 
   const { error: postUpdateError } = await supabase
@@ -671,6 +669,42 @@ export async function requestSecondAiMemeVariant(
   return {};
 }
 
+/** Canvas-Meme (JPEG) nach Client-Rendering nach R2; nur Entwurf, noch ohne `finalizePost`. */
+export async function uploadCanvasPublishedMemeAction(
+  postId: string,
+  formData: FormData,
+): Promise<{ error?: string }> {
+  const file = formData.get("meme") as File | null;
+  if (!file?.size) return { error: "Meme-Bild fehlt" };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Nicht angemeldet" };
+
+  const { data: post, error: pf } = await supabase
+    .from("posts")
+    .select("id, project_id, meme_image_url")
+    .eq("id", postId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (pf || !post?.project_id) return { error: "Post nicht gefunden" };
+  if (post.meme_image_url) return { error: "Bereits veröffentlicht" };
+
+  const memePath = memePublishedObjectKey(post.project_id, user.id, postId);
+  const memeBuffer = Buffer.from(await file.arrayBuffer());
+
+  try {
+    await uploadMemeJpegWithWebpVariants(memePath, memeBuffer);
+  } catch {
+    return { error: "Upload fehlgeschlagen (Speicher)." };
+  }
+
+  return {};
+}
+
 export async function finalizePost(
   postId: string,
   chosenVariantPath: string,
@@ -713,8 +747,7 @@ export async function finalizePost(
 }
 
 export async function deleteVariant(variantPath: string): Promise<void> {
-  const supabase = await createClient();
-  await supabase.storage.from("memes").remove([variantPath]);
+  await r2DeleteWithVariants([normalizeR2Key(variantPath)]);
 }
 
 /**
@@ -757,7 +790,7 @@ export async function discardUnpublishedMeme(
     try {
       const result = JSON.parse(job.error_msg) as JobResult;
       if (result.type === "ai_generated" && result.variantPaths?.length) {
-        await supabase.storage.from("memes").remove(result.variantPaths);
+        await r2DeleteWithVariants(result.variantPaths.map(normalizeR2Key));
       }
     } catch {
       /* ignoriieren */
@@ -765,7 +798,7 @@ export async function discardUnpublishedMeme(
   }
 
   if (post.original_image_url) {
-    await supabase.storage.from("originals").remove([post.original_image_url]);
+    await r2DeleteWithVariants([normalizeR2Key(post.original_image_url)]);
   }
 
   const { error: deleteError } = await supabase

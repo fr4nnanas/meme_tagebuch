@@ -1,5 +1,8 @@
 import OpenAI from "openai";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { memeAiVariantObjectKey, normalizeR2Key } from "@/lib/storage/r2-url";
+import { r2Get } from "@/lib/storage/r2";
+import { uploadMemeJpegWithWebpVariants } from "@/lib/storage/image-pipeline";
 import {
   AI_EXPERIMENTAL_MINIMAL_LAYOUT_INSET,
   experimentalPromptInset,
@@ -48,20 +51,12 @@ export type JobResult =
       overlayTextBottom: string;
     };
 
-async function downloadOriginalBuffer(
-  supabase: ReturnType<typeof createServiceRoleClient>,
-  originalPath: string,
-): Promise<Buffer> {
-  const { data: imageBlob, error: dlError } = await supabase.storage
-    .from("originals")
-    .download(originalPath);
-
-  if (dlError || !imageBlob) {
+async function downloadOriginalBuffer(originalPath: string): Promise<Buffer> {
+  try {
+    return await r2Get(normalizeR2Key(originalPath));
+  } catch {
     throw new Error("Original-Bild konnte nicht geladen werden");
   }
-
-  const imageArrayBuffer = await imageBlob.arrayBuffer();
-  return Buffer.from(imageArrayBuffer);
 }
 
 /** Erster Zeilenumbruch trennt oben/unten; eine Zeile nur unten. Text bleibt inhaltlich erhalten (nur äußeres Trim). */
@@ -155,13 +150,13 @@ export async function processJob(params: ProcessJobParams): Promise<void> {
     let result: JobResult;
 
     if (params.memeType === "ai_generated") {
-      const imageBuffer = await downloadOriginalBuffer(supabase, params.originalPath);
+      const imageBuffer = await downloadOriginalBuffer(params.originalPath);
       result = await generateAiMeme(params, imageBuffer);
     } else if (params.memeType === "canvas_overlay") {
       if (params.pipeline === "manual" || params.pipeline === "assisted") {
         result = await applyManualCanvasOverlay(params);
       } else {
-        const imageBuffer = await downloadOriginalBuffer(supabase, params.originalPath);
+        const imageBuffer = await downloadOriginalBuffer(params.originalPath);
         result = await generateCanvasText(params, imageBuffer);
       }
     } else {
@@ -263,7 +258,12 @@ async function generateAiMeme(
     throw new Error("KI hat kein Bild generiert");
   }
 
-  const v1Path = `${params.projectId}/${params.userId}/${params.postId}_v1.jpg`;
+  const v1Path = memeAiVariantObjectKey(
+    params.projectId,
+    params.userId,
+    params.postId,
+    1,
+  );
   const variantData = variants[0];
   if (!variantData.b64_json) {
     throw new Error("Variante enthält keine Bilddaten");
@@ -271,16 +271,7 @@ async function generateAiMeme(
 
   const variantBuffer = Buffer.from(variantData.b64_json, "base64");
 
-  const { error: uploadError } = await supabase.storage
-    .from("memes")
-    .upload(v1Path, variantBuffer, {
-      contentType: "image/jpeg",
-      upsert: true,
-    });
-
-  if (uploadError) {
-    throw new Error(`Upload fehlgeschlagen: ${uploadError.message}`);
-  }
+  await uploadMemeJpegWithWebpVariants(v1Path, variantBuffer);
 
   return {
     type: "ai_generated",
@@ -331,7 +322,7 @@ export async function appendSecondAiVariantToJob(
     throw new Error("Post nicht gefunden");
   }
 
-  const imageBuffer = await downloadOriginalBuffer(supabase, post.original_image_url);
+  const imageBuffer = await downloadOriginalBuffer(post.original_image_url);
   const imageFile = new File([new Uint8Array(imageBuffer)], "photo.jpg", {
     type: "image/jpeg",
   });
@@ -359,19 +350,15 @@ export async function appendSecondAiVariantToJob(
     throw new Error("KI hat kein zweites Bild generiert");
   }
 
-  const v2Path = `${post.project_id}/${userId}/${post.id}_v2.jpg`;
+  const v2Path = memeAiVariantObjectKey(
+    post.project_id,
+    userId,
+    post.id,
+    2,
+  );
   const variantBuffer = Buffer.from(variants[0].b64_json, "base64");
 
-  const { error: uploadError } = await supabase.storage
-    .from("memes")
-    .upload(v2Path, variantBuffer, {
-      contentType: "image/jpeg",
-      upsert: true,
-    });
-
-  if (uploadError) {
-    throw new Error(`Upload fehlgeschlagen: ${uploadError.message}`);
-  }
+  await uploadMemeJpegWithWebpVariants(v2Path, variantBuffer);
 
   const updated: JobResult = {
     type: "ai_generated",

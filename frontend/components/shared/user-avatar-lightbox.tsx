@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { User, X } from "lucide-react";
+import { resolveAvatarPublicUrl } from "@/lib/storage/r2-url";
 
 export interface UserAvatarLightboxProps {
   avatarUrl: string | null;
@@ -52,7 +53,14 @@ export function UserAvatarLightbox({
     e.stopPropagation();
   }, []);
 
-  if (!avatarUrl) {
+  const thumbSrc = resolveAvatarPublicUrl(avatarUrl, "thumb");
+  const overlaySrc =
+    resolveAvatarPublicUrl(avatarUrl, "full") ??
+    thumbSrc ??
+    avatarUrl ??
+    null;
+
+  if (!avatarUrl || (!thumbSrc && !overlaySrc)) {
     return (
       <div
         className={`${sizeClassName} flex-shrink-0 overflow-hidden rounded-full bg-zinc-800 ${className}`}
@@ -88,7 +96,7 @@ export function UserAvatarLightbox({
         </button>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={avatarUrl}
+          src={overlaySrc ?? ""}
           alt={`Profilbild von ${username}`}
           className="max-h-[min(90vh,520px)] max-w-[min(90vw,520px)] rounded-full object-cover shadow-2xl"
           onClick={stopLinkNavigation}
@@ -114,7 +122,11 @@ export function UserAvatarLightbox({
         className={`${sizeClassName} flex-shrink-0 overflow-hidden rounded-full bg-zinc-800 outline-none ring-orange-500/40 transition hover:ring-2 hover:ring-orange-500/40 focus-visible:ring-2 ${className}`}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+        <img
+          src={thumbSrc ?? overlaySrc ?? ""}
+          alt=""
+          className="h-full w-full object-cover"
+        />
       </button>
       {overlay}
     </>

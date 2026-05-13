@@ -1,25 +1,36 @@
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
-import { createClient } from "@/lib/supabase/client";
 import type { ProjectExportPayload } from "@/lib/actions/export";
 import { buildOfflineGalleryHtml } from "./offline-gallery-html";
+import {
+  normalizeAvatarStorageKey,
+  normalizeR2Key,
+  R2_AVATARS_PREFIX,
+  R2_MEMES_PREFIX,
+  R2_ORIGINAL_PREFIX,
+  safeR2Url,
+} from "@/lib/storage/r2-url";
 
-function normalizeMemePath(path: string): string {
-  return path.replace(/^\/+/, "").trim();
-}
-
-/** Öffentliche Supabase-URL → Objektpfad im Bucket `avatars`. */
-function storagePathFromAvatarPublicUrl(avatarUrl: string | null): string | null {
-  if (!avatarUrl?.trim()) return null;
+async function fetchImageBlob(url: string): Promise<Blob | null> {
   try {
-    const u = new URL(avatarUrl);
-    const marker = "/object/public/avatars/";
-    const i = u.pathname.indexOf(marker);
-    if (i === -1) return null;
-    return decodeURIComponent(u.pathname.slice(i + marker.length));
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return await res.blob();
   } catch {
     return null;
   }
+}
+
+function canonicalMemeStorageKey(postUrl: string): string {
+  const k = normalizeR2Key(postUrl);
+  return k.startsWith(`${R2_MEMES_PREFIX}/`) ? k : `${R2_MEMES_PREFIX}/${k}`;
+}
+
+function canonicalOriginalStorageKey(postUrl: string): string {
+  const k = normalizeR2Key(postUrl);
+  return k.startsWith(`${R2_ORIGINAL_PREFIX}/`)
+    ? k
+    : `${R2_ORIGINAL_PREFIX}/${k}`;
 }
 
 function extFromStoragePath(path: string): string {
@@ -49,7 +60,6 @@ export async function buildProjectZipBlob(
 ): Promise<ProjectZipBuildResult> {
   try {
     onProgress(0);
-    const supabase = createClient();
     const zip = new JSZip();
 
     const imgFolder =
@@ -64,7 +74,9 @@ export async function buildProjectZipBlob(
     if (imgFolder && payload.posts.length > 0) {
       const avatarFolder = imgFolder.folder("avatars");
       if (!avatarFolder) {
-        return { error: "ZIP konnte den Ordner images/avatars nicht anlegen." };
+        return {
+          error: "ZIP konnte den Ordner images/avatars nicht anlegen.",
+        };
       }
 
       const latestAvatarUrl = new Map<string, string | null>();
@@ -75,36 +87,36 @@ export async function buildProjectZipBlob(
         }
       }
 
-      for (const [userId, avatarUrl] of latestAvatarUrl) {
-        const storagePath = storagePathFromAvatarPublicUrl(avatarUrl);
-        if (!storagePath || !userId) continue;
+      for (const [uid, avatarField] of latestAvatarUrl) {
+        const avatarKey = normalizeAvatarStorageKey(avatarField);
+        if (!avatarKey?.startsWith(`${R2_AVATARS_PREFIX}/`) || !uid) continue;
 
-        const { data: avBlob, error: avErr } = await supabase.storage
-          .from("avatars")
-          .download(storagePath);
+        const publicUrl = safeR2Url(avatarKey, "full");
+        if (!publicUrl) continue;
 
-        if (avErr || !avBlob || avBlob.size < 16) continue;
+        const avBlob = await fetchImageBlob(publicUrl);
+        if (!avBlob || avBlob.size < 16) continue;
 
-        const ext = extFromStoragePath(storagePath);
-        const rel = `./images/avatars/${userId}.${ext}`;
-        avatarFolder.file(`${userId}.${ext}`, avBlob);
-        avatarRelByUserId.set(userId, rel);
+        const ext = extFromStoragePath(avatarKey);
+        const rel = `./images/avatars/${uid}.${ext}`;
+        avatarFolder.file(`${uid}.${ext}`, avBlob);
+        avatarRelByUserId.set(uid, rel);
       }
     }
 
     const n = payload.posts.length;
     for (let i = 0; i < n; i++) {
       const post = payload.posts[i];
-      const path = normalizeMemePath(post.meme_image_url);
-      const { data: fileBlob, error: dlError } = await supabase.storage
-        .from("memes")
-        .download(path);
+      const memeKey = canonicalMemeStorageKey(post.meme_image_url);
+      const memeUrl = safeR2Url(memeKey, "full");
+      if (!memeUrl) {
+        return { error: `Keine gültige R2-Konfiguration (Post ${post.id}).` };
+      }
 
-      if (dlError || !fileBlob) {
+      const fileBlob = await fetchImageBlob(memeUrl);
+      if (!fileBlob) {
         return {
-          error:
-            dlError?.message ??
-            `Meme konnte nicht geladen werden (Post ${post.id}).`,
+          error: `Meme konnte nicht geladen werden (Post ${post.id}).`,
         };
       }
 
@@ -114,13 +126,15 @@ export async function buildProjectZipBlob(
 
       imgFolder!.file(`${post.id}.jpg`, fileBlob);
 
-      const origPath = normalizeMemePath(post.original_image_url);
-      if (origPath) {
-        const { data: origBlob, error: origErr } = await supabase.storage
-          .from("originals")
-          .download(origPath);
-        if (!origErr && origBlob && origBlob.size >= 32) {
-          imgFolder!.file(`${post.id}_original.jpg`, origBlob);
+      const origPathNorm = normalizeR2Key(post.original_image_url);
+      if (origPathNorm) {
+        const ok = canonicalOriginalStorageKey(origPathNorm);
+        const origUrl = safeR2Url(ok, "full");
+        if (origUrl) {
+          const origBlob = await fetchImageBlob(origUrl);
+          if (origBlob && origBlob.size >= 32) {
+            imgFolder!.file(`${post.id}_original.jpg`, origBlob);
+          }
         }
       }
 

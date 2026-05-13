@@ -7,7 +7,13 @@ import { X } from "lucide-react";
 import { useJobContext } from "@/components/features/app/job-context";
 import { VariantPickerModal } from "@/components/features/upload/variant-picker-modal";
 import { CanvasMemePreview } from "@/components/features/upload/canvas-meme-preview";
-import { finalizePost, deleteVariant, discardUnpublishedMeme } from "@/lib/actions/upload";
+import {
+  finalizePost,
+  deleteVariant,
+  discardUnpublishedMeme,
+  uploadCanvasPublishedMemeAction,
+} from "@/lib/actions/upload";
+import { memePublishedObjectKey } from "@/lib/storage/r2-url";
 import { createClient } from "@/lib/supabase/client";
 
 // Dieser Wrapper wird im App-Layout gemountet und reagiert auf abgeschlossene Jobs.
@@ -85,6 +91,17 @@ export function JobCompletionHandler() {
       setIsPosting(true);
 
       try {
+        const fd = new FormData();
+        fd.set("meme", new File([memeBlob], "meme.jpg", { type: "image/jpeg" }));
+        const up = await uploadCanvasPublishedMemeAction(
+          completedJobData.postId,
+          fd,
+        );
+        if (up.error) {
+          toast.error(up.error);
+          return;
+        }
+
         const supabase = createClient();
         const {
           data: { user },
@@ -93,33 +110,22 @@ export function JobCompletionHandler() {
           toast.error("Nicht angemeldet");
           return;
         }
-
-        // Post-Daten laden um projectId zu bekommen
         const { data: post } = await supabase
           .from("posts")
-          .select("project_id, user_id")
+          .select("project_id")
           .eq("id", completedJobData.postId)
           .maybeSingle();
 
-        if (!post) {
+        if (!post?.project_id) {
           toast.error("Post nicht gefunden");
           return;
         }
 
-        const memePath = `${post.project_id}/${user.id}/${completedJobData.postId}.jpg`;
-        const memeBuffer = await memeBlob.arrayBuffer();
-
-        const { error: uploadError } = await supabase.storage
-          .from("memes")
-          .upload(memePath, memeBuffer, {
-            contentType: "image/jpeg",
-            upsert: true,
-          });
-
-        if (uploadError) {
-          toast.error(`Upload fehlgeschlagen: ${uploadError.message}`);
-          return;
-        }
+        const memePath = memePublishedObjectKey(
+          post.project_id,
+          user.id,
+          completedJobData.postId,
+        );
 
         const result = await finalizePost(
           completedJobData.postId,

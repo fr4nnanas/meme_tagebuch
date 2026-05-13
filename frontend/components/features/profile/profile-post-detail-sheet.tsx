@@ -354,10 +354,12 @@ export function ProfilePostDetailSheet({
   }
 
   function handleShareMeme() {
-    if (!post?.signed_url) return;
+    if (!post) return;
+    const shareSrc = post.meme_full_url ?? post.signed_url;
+    if (!shareSrc) return;
     startShareTransition(async () => {
       const outcome = await shareMemeFromPost({
-        imageUrl: post.signed_url,
+        imageUrl: shareSrc,
         username: post.user.username,
         userId: post.user_id,
         caption: currentCaption ?? post.caption ?? null,
@@ -380,7 +382,8 @@ export function ProfilePostDetailSheet({
   const isPostAuthor =
     post !== null && String(post.user_id) === String(currentUserId);
   const canEditCaption = isPostAuthor;
-  const imgSrc = post?.signed_url ?? fallbackImageSrc;
+  const memeDisplaySrc = post?.meme_full_url ?? post?.signed_url;
+  const imgSrc = memeDisplaySrc ?? fallbackImageSrc;
   const createdAt = post
     ? new Intl.DateTimeFormat("de-DE", {
         day: "2-digit",
@@ -478,7 +481,7 @@ export function ProfilePostDetailSheet({
         <button
           type="button"
           onClick={handleShareMeme}
-          disabled={isSharing || !post.signed_url}
+          disabled={isSharing || !(post.meme_full_url ?? post.signed_url)}
           aria-label="Meme teilen"
           className="flex h-10 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800/80 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 sm:px-3"
         >
@@ -495,7 +498,7 @@ export function ProfilePostDetailSheet({
     entryAsLightbox &&
     lightboxOpen &&
     !postSocialActionsEl &&
-    Boolean(post?.signed_url ?? fallbackImageSrc);
+    Boolean(post?.meme_full_url ?? post?.signed_url ?? fallbackImageSrc);
 
   return (
     <>
@@ -510,7 +513,7 @@ export function ProfilePostDetailSheet({
       <MemeImageLightbox
         open={lightboxOpen}
         onClose={handleLightboxRequestClose}
-        memeSrc={post?.signed_url ?? fallbackImageSrc}
+        memeSrc={post?.meme_full_url ?? post?.signed_url ?? fallbackImageSrc}
         originalSrc={post?.original_signed_url ?? fallbackOriginalSrc ?? null}
         historySync={!entryAsLightbox || sheetRevealed}
         footer={

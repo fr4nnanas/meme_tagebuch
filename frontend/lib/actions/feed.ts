@@ -4,6 +4,15 @@ import { revalidatePath } from "next/cache";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { fetchMyStarRatingsForPostIds } from "@/lib/meme/fetch-my-star-ratings";
 import type { JobResult } from "@/lib/meme/process-job";
+import {
+  expandR2CopyKeys,
+  normalizeR2Key,
+  R2_AVATARS_PREFIX,
+  R2_MEMES_PREFIX,
+  R2_ORIGINAL_PREFIX,
+  r2Url,
+} from "@/lib/storage/r2-url";
+import { r2Delete, r2DeleteWithVariants, r2PutCopyFromBuffer } from "@/lib/storage/r2";
 
 const PAGE_SIZE = 10;
 
@@ -55,6 +64,56 @@ function buildRecentLikersByPostId(rows: PostLikeJoinRow[]): Map<string, PostLik
   return out;
 }
 
+function buildPublicMediaUrls(
+  originalPathRaw: string,
+  memePathRaw: string | null,
+): {
+  signed_url: string | null;
+  meme_full_url: string | null;
+  meme_thumb_url: string | null;
+  thumbnail_url: string | null;
+  original_signed_url: string | null;
+} {
+  const orig = normalizeR2Key(originalPathRaw);
+  const meme = memePathRaw ? normalizeR2Key(memePathRaw) : null;
+  const original_signed_url = r2Url(orig, "full");
+  const originalThumb = r2Url(orig, "thumb");
+  if (meme) {
+    return {
+      signed_url: r2Url(meme, "feed"),
+      meme_full_url: r2Url(meme, "full"),
+      meme_thumb_url: r2Url(meme, "thumb"),
+      thumbnail_url: r2Url(meme, "thumb"),
+      original_signed_url,
+    };
+  }
+  return {
+    signed_url: null,
+    meme_full_url: null,
+    meme_thumb_url: null,
+    thumbnail_url: originalThumb,
+    original_signed_url,
+  };
+}
+
+/** Projektteil im Object-Key ersetzen (nur prefixed Keys aus Migration). */
+function remapStoredPostObjectKey(
+  rawKey: string,
+  oldProjectId: string,
+  newProjectId: string,
+  authorId: string,
+): string | null {
+  const key = normalizeR2Key(rawKey);
+  const oOld = `${R2_ORIGINAL_PREFIX}/${oldProjectId}/${authorId}/`;
+  const oNew = `${R2_ORIGINAL_PREFIX}/${newProjectId}/${authorId}/`;
+  const mOld = `${R2_MEMES_PREFIX}/${oldProjectId}/${authorId}/`;
+  const mNew = `${R2_MEMES_PREFIX}/${newProjectId}/${authorId}/`;
+  if (key.startsWith(oOld)) return oNew + key.slice(oOld.length);
+  if (key.startsWith(mOld)) return mNew + key.slice(mOld.length);
+  if (key.startsWith(`${R2_AVATARS_PREFIX}/`)) return null;
+  return null;
+}
+
 export interface PostUser {
   username: string;
   avatar_url: string | null;
@@ -75,13 +134,20 @@ export interface PostWithDetails {
   pipeline: string;
   pipeline_input_text: string | null;
   original_image_url: string;
-  /** Signierte URL zum Original-Upload (für Lightbox / Transparenz) */
+  /** Öffentliche URL zum Original (JPEG, volle Auflösung). */
   original_signed_url: string | null;
+  /** Meme JPEG CDN-URL volle Auflösung (Lightbox / Share). */
+  meme_full_url: string | null;
+  /** Klein / Raster. */
+  meme_thumb_url: string | null;
+  /** Raster: Meme-Thumbn. oder Original-Thumbn. wenn noch kein Meme. */
+  thumbnail_url: string | null;
   created_at: string;
   user: PostUser;
   like_count: number;
   liked_by_me: boolean;
   comment_count: number;
+  /** Feed-/mittlere Meme-WebP oder null (Entwurf). */
   signed_url: string | null;
   /** Bis zu vier neueste Liker (neueste zuerst), für Avatar-Stapel auf dem Meme. */
   recent_likers: PostLiker[];
@@ -143,41 +209,6 @@ export async function fetchPostsAction(
       supabase.from("comments").select("post_id").in("post_id", postIds),
     ]);
 
-    const memePaths = postsRaw
-      .filter((p) => p.meme_image_url)
-      .map((p) => p.meme_image_url as string);
-
-    const signedUrlMap: Record<string, string> = {};
-    if (memePaths.length > 0) {
-      const { data: signedUrls } = await supabase.storage
-        .from("memes")
-        .createSignedUrls(memePaths, 3600);
-      if (signedUrls) {
-        memePaths.forEach((path, i) => {
-          const su = signedUrls[i];
-          if (su?.signedUrl) signedUrlMap[path] = su.signedUrl;
-        });
-      }
-    }
-
-    const originalPaths = [
-      ...new Set(
-        postsRaw.map((p) => p.original_image_url as string).filter(Boolean),
-      ),
-    ];
-    const originalSignedMap: Record<string, string> = {};
-    if (originalPaths.length > 0) {
-      const { data: signedOrig } = await supabase.storage
-        .from("originals")
-        .createSignedUrls(originalPaths, 3600);
-      if (signedOrig) {
-        originalPaths.forEach((path, i) => {
-          const su = signedOrig[i];
-          if (su?.signedUrl) originalSignedMap[path] = su.signedUrl;
-        });
-      }
-    }
-
     const likeCountMap: Record<string, number> = {};
     const likedByMeSet = new Set<string>();
     for (const like of likesRaw ?? []) {
@@ -203,6 +234,10 @@ export async function fetchPostsAction(
         star_rating_count?: number | null;
       };
       const cnt = Number(pr.star_rating_count ?? 0);
+      const media = buildPublicMediaUrls(
+        origPath,
+        (p.meme_image_url ?? null) as string | null,
+      );
       return {
         id: p.id,
         user_id: p.user_id,
@@ -218,7 +253,7 @@ export async function fetchPostsAction(
         pipeline_input_text: (p as { pipeline_input_text?: string | null })
           .pipeline_input_text ?? null,
         original_image_url: origPath,
-        original_signed_url: originalSignedMap[origPath] ?? null,
+        ...media,
         created_at: p.created_at,
         user: {
           username: (userInfo as PostUser | null)?.username ?? "Unbekannt",
@@ -227,7 +262,6 @@ export async function fetchPostsAction(
         like_count: likeCountMap[p.id] ?? 0,
         liked_by_me: likedByMeSet.has(p.id),
         comment_count: commentCountMap[p.id] ?? 0,
-        signed_url: p.meme_image_url ? (signedUrlMap[p.meme_image_url] ?? null) : null,
         recent_likers: recentLikersByPost.get(p.id) ?? [],
       };
     });
@@ -348,43 +382,6 @@ export async function fetchUnseenPostsAction(
       ]),
     );
 
-    const memePaths = unseenRows
-      .filter((p) => p.meme_image_url)
-      .map((p) => p.meme_image_url as string);
-
-    const signedUrlMap: Record<string, string> = {};
-    if (memePaths.length > 0) {
-      const { data: signedUrls } = await supabase.storage
-        .from("memes")
-        .createSignedUrls(memePaths, 3600);
-      if (signedUrls) {
-        memePaths.forEach((path, i) => {
-          const su = signedUrls[i];
-          if (su?.signedUrl) signedUrlMap[path] = su.signedUrl;
-        });
-      }
-    }
-
-    const unseenOriginalPaths = [
-      ...new Set(
-        [...extraById.values()]
-          .map((v) => v.original_image_url)
-          .filter(Boolean),
-      ),
-    ];
-    const originalSignedMap: Record<string, string> = {};
-    if (unseenOriginalPaths.length > 0) {
-      const { data: signedOrig } = await supabase.storage
-        .from("originals")
-        .createSignedUrls(unseenOriginalPaths, 3600);
-      if (signedOrig) {
-        unseenOriginalPaths.forEach((path, i) => {
-          const su = signedOrig[i];
-          if (su?.signedUrl) originalSignedMap[path] = su.signedUrl;
-        });
-      }
-    }
-
     const likeCountMap: Record<string, number> = {};
     const likedByMeSet = new Set<string>();
     for (const like of likesRaw ?? []) {
@@ -405,6 +402,16 @@ export async function fetchUnseenPostsAction(
       const uinfo = userMap.get(p.user_id);
       const ex = extraById.get(p.id);
       const origPath = ex?.original_image_url ?? "";
+      const emptyMedia = {
+        signed_url: null,
+        meme_full_url: null,
+        meme_thumb_url: null,
+        thumbnail_url: null,
+        original_signed_url: null as string | null,
+      };
+      const media = origPath
+        ? buildPublicMediaUrls(origPath, p.meme_image_url ?? null)
+        : emptyMedia;
       return {
         id: p.id,
         user_id: p.user_id,
@@ -418,7 +425,7 @@ export async function fetchUnseenPostsAction(
         pipeline: ex?.pipeline ?? "direct",
         pipeline_input_text: ex?.pipeline_input_text ?? null,
         original_image_url: origPath,
-        original_signed_url: origPath ? (originalSignedMap[origPath] ?? null) : null,
+        ...media,
         created_at: p.created_at,
         user: {
           username: uinfo?.username ?? "Unbekannt",
@@ -427,7 +434,6 @@ export async function fetchUnseenPostsAction(
         like_count: likeCountMap[p.id] ?? 0,
         liked_by_me: likedByMeSet.has(p.id),
         comment_count: commentCountMap[p.id] ?? 0,
-        signed_url: p.meme_image_url ? (signedUrlMap[p.meme_image_url] ?? null) : null,
         recent_likers: recentLikersByPost.get(p.id) ?? [],
       };
     });
@@ -528,26 +534,10 @@ export async function fetchPostDetailAction(
       supabase.from("comments").select("post_id").eq("post_id", postId),
     ]);
 
-    let signedUrl: string | null = null;
-    if (p.meme_image_url) {
-      const { data: signedUrls } = await supabase.storage
-        .from("memes")
-        .createSignedUrls([p.meme_image_url], 3600);
-      signedUrl = signedUrls?.[0]?.signedUrl ?? null;
-    } else if (p.original_image_url) {
-      const { data: signedUrls } = await supabase.storage
-        .from("originals")
-        .createSignedUrls([p.original_image_url], 3600);
-      signedUrl = signedUrls?.[0]?.signedUrl ?? null;
-    }
-
-    let originalSignedUrl: string | null = null;
-    if (p.original_image_url) {
-      const { data: signedOrig } = await supabase.storage
-        .from("originals")
-        .createSignedUrls([p.original_image_url], 3600);
-      originalSignedUrl = signedOrig?.[0]?.signedUrl ?? null;
-    }
+    const media = buildPublicMediaUrls(
+      p.original_image_url as string,
+      (p.meme_image_url ?? null) as string | null,
+    );
 
     const likeRows = likesRaw ?? [];
     const like_count = likeRows.length;
@@ -582,7 +572,7 @@ export async function fetchPostDetailAction(
       pipeline: row.pipeline,
       pipeline_input_text: row.pipeline_input_text,
       original_image_url: p.original_image_url as string,
-      original_signed_url: originalSignedUrl,
+      ...media,
       created_at: p.created_at,
       user: {
         username: (userInfo as PostUser | null)?.username ?? "Unbekannt",
@@ -591,7 +581,6 @@ export async function fetchPostDetailAction(
       like_count,
       liked_by_me,
       comment_count: (commentsRaw ?? []).length,
-      signed_url: signedUrl,
       recent_likers,
     };
 
@@ -889,16 +878,14 @@ export async function deletePostAction(postId: string): Promise<{ error?: string
       if (profile?.role !== "admin") return { error: "Keine Berechtigung" };
     }
 
-    const storageCleanup: Promise<unknown>[] = [];
+    const dels: Promise<unknown>[] = [];
     if (post.meme_image_url) {
-      storageCleanup.push(supabase.storage.from("memes").remove([post.meme_image_url]));
+      dels.push(r2DeleteWithVariants([normalizeR2Key(post.meme_image_url)]));
     }
     if (post.original_image_url) {
-      storageCleanup.push(
-        supabase.storage.from("originals").remove([post.original_image_url]),
-      );
+      dels.push(r2DeleteWithVariants([normalizeR2Key(post.original_image_url)]));
     }
-    await Promise.all(storageCleanup);
+    await Promise.all(dels);
 
     const { error } = await supabase
       .from("posts")
@@ -978,20 +965,23 @@ export async function fetchDestinationProjectsForMoveAction(
   }
 }
 
-async function collectPathsToRelocate(
+async function collectLogicalPrimaryPathsToRelocate(
   svc: ReturnType<typeof createServiceRoleClient>,
   postId: string,
   oldProjectId: string,
+  authorId: string,
   originalPath: string,
   memePath: string | null,
-): Promise<Map<string, "originals" | "memes">> {
-  const map = new Map<string, "originals" | "memes">();
-  if (originalPath.startsWith(`${oldProjectId}/`)) {
-    map.set(originalPath, "originals");
-  }
-  if (memePath && memePath.startsWith(`${oldProjectId}/`)) {
-    map.set(memePath, "memes");
-  }
+): Promise<Set<string>> {
+  const keys = new Set<string>();
+  const normO = normalizeR2Key(originalPath);
+  const normM = memePath ? normalizeR2Key(memePath) : null;
+
+  const orgScope = `${R2_ORIGINAL_PREFIX}/${oldProjectId}/${authorId}/`;
+  const memScope = `${R2_MEMES_PREFIX}/${oldProjectId}/${authorId}/`;
+
+  if (normO.startsWith(orgScope)) keys.add(normO);
+  if (normM && normM.startsWith(memScope)) keys.add(normM);
 
   const { data: job } = await svc
     .from("jobs")
@@ -1005,10 +995,10 @@ async function collectPathsToRelocate(
     try {
       const parsed = JSON.parse(job.error_msg) as JobResult;
       if (parsed.type === "ai_generated" && Array.isArray(parsed.variantPaths)) {
-        for (const p of parsed.variantPaths) {
-          if (typeof p === "string" && p.startsWith(`${oldProjectId}/`)) {
-            map.set(p, "memes");
-          }
+        for (const pth of parsed.variantPaths) {
+          const k =
+            typeof pth === "string" ? normalizeR2Key(pth) : "";
+          if (k.startsWith(memScope)) keys.add(k);
         }
       }
     } catch {
@@ -1016,7 +1006,7 @@ async function collectPathsToRelocate(
     }
   }
 
-  return map;
+  return keys;
 }
 
 /**
@@ -1085,57 +1075,58 @@ export async function movePostToProjectAction(
   const authorId = post.user_id as string;
 
   const svc = createServiceRoleClient();
-  const pathMap = await collectPathsToRelocate(
+  const logicalPrimaryKeys = await collectLogicalPrimaryPathsToRelocate(
     svc,
     postId,
     oldProjectId,
+    authorId,
     post.original_image_url as string,
     post.meme_image_url as string,
   );
 
-  const newPrefix = `${targetProjectId}/${authorId}/`;
-  const oldPrefix = `${oldProjectId}/${authorId}/`;
-
-  const copies: { bucket: "originals" | "memes"; from: string; to: string }[] =
-    [];
-  for (const [fromPath, bucket] of pathMap) {
-    if (!fromPath.startsWith(oldPrefix)) continue;
-    const suffix = fromPath.slice(oldPrefix.length);
-    const toPath = `${newPrefix}${suffix}`;
-    copies.push({ bucket, from: fromPath, to: toPath });
+  const expandedOldKeys = new Set<string>();
+  for (const primary of logicalPrimaryKeys) {
+    for (const k of expandR2CopyKeys(primary)) expandedOldKeys.add(k);
   }
 
-  if (copies.length === 0) {
+  if (expandedOldKeys.size === 0) {
     return { error: "Keine verschiebbaren Dateien gefunden." };
   }
 
-  for (const c of copies) {
-    const { data: blob, error: dlErr } = await svc.storage
-      .from(c.bucket)
-      .download(c.from);
-    if (dlErr || !blob) {
-      return { error: `Download fehlgeschlagen (${c.from}): ${dlErr?.message ?? ""}` };
+  try {
+    for (const fromKey of expandedOldKeys) {
+      const toKey = remapStoredPostObjectKey(
+        fromKey,
+        oldProjectId,
+        targetProjectId,
+        authorId,
+      );
+      if (!toKey) {
+        return { error: `Remap unmöglich für ${fromKey}` };
+      }
+      await r2PutCopyFromBuffer(fromKey, toKey);
     }
-    const buf = Buffer.from(await blob.arrayBuffer());
-    const { error: upErr } = await svc.storage
-      .from(c.bucket)
-      .upload(c.to, buf, { contentType: "image/jpeg", upsert: true });
-    if (upErr) {
-      return { error: `Upload fehlgeschlagen (${c.to}): ${upErr.message}` };
-    }
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "R2-Verschieben fehlgeschlagen.",
+    };
   }
 
-  const newOriginal =
-    post.original_image_url &&
-    String(post.original_image_url).startsWith(oldPrefix)
-      ? `${newPrefix}${String(post.original_image_url).slice(oldPrefix.length)}`
-      : (post.original_image_url as string);
-
-  const newMeme =
-    post.meme_image_url &&
-    String(post.meme_image_url).startsWith(oldPrefix)
-      ? `${newPrefix}${String(post.meme_image_url).slice(oldPrefix.length)}`
-      : (post.meme_image_url as string);
+  const newOriginal = remapStoredPostObjectKey(
+    normalizeR2Key(post.original_image_url as string),
+    oldProjectId,
+    targetProjectId,
+    authorId,
+  );
+  const newMeme = remapStoredPostObjectKey(
+    normalizeR2Key(post.meme_image_url as string),
+    oldProjectId,
+    targetProjectId,
+    authorId,
+  );
+  if (!newOriginal || !newMeme) {
+    return { error: "Speicherpfade konnten nicht auf das Zielprojekt abgebildet werden." };
+  }
 
   const { error: updErr } = await svc
     .from("posts")
@@ -1162,10 +1153,13 @@ export async function movePostToProjectAction(
     try {
       const parsed = JSON.parse(jobRow.error_msg) as JobResult;
       if (parsed.type === "ai_generated" && Array.isArray(parsed.variantPaths)) {
-        const nextPaths = parsed.variantPaths.map((p) =>
-          typeof p === "string" && p.startsWith(oldPrefix)
-            ? `${newPrefix}${p.slice(oldPrefix.length)}`
-            : p,
+        const nextPaths = parsed.variantPaths.map((path) =>
+          remapStoredPostObjectKey(
+            normalizeR2Key(String(path)),
+            oldProjectId,
+            targetProjectId,
+            authorId,
+          ) ?? String(path),
         );
         const updated: JobResult = {
           ...parsed,
@@ -1184,11 +1178,7 @@ export async function movePostToProjectAction(
     }
   }
 
-  const fromPaths = [...pathMap.keys()];
-  for (const fromPath of fromPaths) {
-    const b = pathMap.get(fromPath)!;
-    await svc.storage.from(b).remove([fromPath]);
-  }
+  await r2Delete([...expandedOldKeys]);
 
   revalidatePath("/feed");
   revalidatePath("/profile");

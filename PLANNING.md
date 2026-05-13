@@ -80,20 +80,21 @@ Da KI-Aufrufe 10–30 Sekunden dauern können:
 
 - Alle Bilder werden **zwingend auf 3:4 gecroppt** (via `react-image-crop`) vor dem Upload
 - EXIF-GPS-Daten werden **vor dem Upload** via `exif-js` aus dem Original extrahiert und als `lat` / `lng` in der DB gespeichert
-- Das Originalfoto und das generierte Meme werden **getrennt** in Supabase Storage gespeichert
-- Storage-Buckets: `avatars` (public), `originals` (private), `memes` (private)
+- Das Originalfoto und das fertige Meme werden **auf Cloudflare R2** gespeichert (ein öffentlicher Bucket; Zugriffslogik liegt bei der App/RLS, nicht bei signed URLs über Supabase Storage)
+- **Ein R2-Bucket** mit Prefixen **`originals/`**, **`memes/`**, **`avatars/`**; Kern-Pfad weiterhin **`{project_id}/{user_id}/{post_id}.jpg`** (bei KI-Varianten zusätzliche Suffixe `_v1` / `_v2` Dateinamen)
+- Sharp erzeugt pro Haupt-JPEG zusätzliche **`_thumb.webp`** sowie bei Memes **`_feed.webp`**
 
 ---
 
-## 7. Supabase Storage Buckets
+## 7. Blob-Speicher (Cloudflare R2)
 
-| Bucket | Zugang | Inhalt |
+| Bereich im Bucket | Öffentlicher Pfad unter `NEXT_PUBLIC_R2_PUBLIC_BASE` | Inhalt |
 |---|---|---|
-| `avatars` | Öffentlich | Profilbilder |
-| `originals` | Privat (nur Projektmitglieder) | Originalfotos (3:4) |
-| `memes` | Privat (nur Projektmitglieder) | Fertige Memes (Typ A + Typ B) |
+| `avatars/` … | Avatar-JPEG (~512 px quadratisch) + `_thumb.webp` | Profilbild (`users.avatar_url` = Objekt-Key) |
+| `originals/` … | Original-JPEG + `_thumb.webp` | Original nach 3:4-Crop (`posts.original_image_url`) |
+| `memes/` … | Meme-JPEG + `_thumb.webp` + `_feed.webp` | Fertige Memes Typ A+B (`posts.meme_image_url`) |
 
-Pfadstruktur: `/{project_id}/{user_id}/{post_id}.jpg`
+**Migration:** bestehende Dateien können mit `frontend`: `npm run migrate:r2` (Skript unter `frontend/scripts/migrate-supabase-to-r2.mjs`, `--dry-run` / `--limit`) aus Supabase Storage übernommen werden. Danach können die dortigen drei Buckets entfernt geleert werden.
 
 ---
 
@@ -104,6 +105,13 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
+
+# Cloudflare R2 (S3-kompatibel)
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET=
+NEXT_PUBLIC_R2_PUBLIC_BASE=
 ```
 
 ---
@@ -122,7 +130,7 @@ OPENAI_API_KEY=
 
 - User (oder Admin) klickt "Projekt exportieren"
 - Frontend sammelt via Supabase alle Posts + Kommentare + Likes des Projekts als JSON
-- Alle Meme-Bilder werden aus Supabase Storage geladen
+- Alle Meme- und Originale-Bilder werden per **öffentlicher R2-URL** (`NEXT_PUBLIC_R2_PUBLIC_BASE`) per `fetch` geladen und in den ZIP geschrieben
 - Eine statische `index.html` (offline Galerie im Feed-Design) wird generiert
 - Alles wird via `jszip` + `file-saver` als `.zip` heruntergeladen
 - ZIP-Struktur:

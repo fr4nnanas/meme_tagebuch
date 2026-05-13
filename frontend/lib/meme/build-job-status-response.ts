@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { normalizeR2Key, r2Url } from "@/lib/storage/r2-url";
 import type { JobStatusResponse } from "@/lib/meme/job-status-types";
 import type { JobResult } from "@/lib/meme/process-job";
 
@@ -37,20 +38,22 @@ export async function buildJobStatusResponse(
   }
 
   if (result.type === "ai_generated") {
-    const signedResults = await Promise.all(
-      result.variantPaths.map((path) =>
-        supabase.storage.from("memes").createSignedUrl(path, 3600),
-      ),
-    );
-
-    const variantSignedUrls = signedResults
-      .map((r) => r.data?.signedUrl)
-      .filter((u): u is string => Boolean(u));
+    let variantSignedUrls: string[];
+    try {
+      variantSignedUrls = result.variantPaths.map((path) =>
+        r2Url(normalizeR2Key(path), "full"),
+      );
+    } catch {
+      return {
+        ...base,
+        errorMsg: "CDN-URLs für Varianten konnten nicht gebaut werden",
+      };
+    }
 
     if (variantSignedUrls.length !== result.variantPaths.length) {
       return {
         ...base,
-        errorMsg: "Signed URLs konnten nicht erstellt werden",
+        errorMsg: "CDN-URLs für Varianten fehlen",
       };
     }
 
@@ -78,10 +81,14 @@ export async function buildJobStatusResponse(
 
     let originalSignedUrl: string | undefined;
     if (post?.original_image_url) {
-      const { data: signedData } = await supabase.storage
-        .from("originals")
-        .createSignedUrl(post.original_image_url, 3600);
-      originalSignedUrl = signedData?.signedUrl ?? undefined;
+      try {
+        originalSignedUrl = r2Url(
+          normalizeR2Key(post.original_image_url),
+          "full",
+        );
+      } catch {
+        originalSignedUrl = undefined;
+      }
     }
 
     return {

@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { normalizeR2Key, safeR2Url } from "@/lib/storage/r2-url";
 
 export interface MapPost {
   id: string;
@@ -52,26 +53,10 @@ export async function fetchMapPostsAction(
     if (postsError) return { posts: [], users: [], error: postsError.message };
     if (!raw || raw.length === 0) return { posts: [], users: [] };
 
-    // Signed URLs für alle Meme-Thumbnails erstellen
-    const memePaths = raw
-      .filter((p) => p.meme_image_url)
-      .map((p) => p.meme_image_url as string);
-
-    const signedUrlMap: Record<string, string> = {};
-    if (memePaths.length > 0) {
-      const { data: signedUrls } = await supabase.storage
-        .from("memes")
-        .createSignedUrls(memePaths, 3600);
-      if (signedUrls) {
-        memePaths.forEach((path, i) => {
-          const su = signedUrls[i];
-          if (su?.signedUrl) signedUrlMap[path] = su.signedUrl;
-        });
-      }
-    }
-
     const posts: MapPost[] = raw.map((p) => {
       const userRaw = Array.isArray(p.users) ? p.users[0] : p.users;
+      const mPath =
+        typeof p.meme_image_url === "string" ? normalizeR2Key(p.meme_image_url) : null;
       return {
         id: p.id,
         user_id: p.user_id,
@@ -80,7 +65,7 @@ export async function fetchMapPostsAction(
         meme_image_url: p.meme_image_url,
         caption: p.caption,
         created_at: p.created_at,
-        signed_url: p.meme_image_url ? (signedUrlMap[p.meme_image_url] ?? null) : null,
+        signed_url: mPath ? safeR2Url(mPath, "thumb") : null,
         user: {
           username: userRaw?.username ?? "Unbekannt",
           avatar_url: userRaw?.avatar_url ?? null,
@@ -88,10 +73,9 @@ export async function fetchMapPostsAction(
       };
     });
 
-    // Eindeutige User-Liste für den Filter
     const userMap = new Map<string, string>();
-    for (const p of posts) {
-      userMap.set(p.user_id, p.user.username);
+    for (const post of posts) {
+      userMap.set(post.user_id, post.user.username);
     }
     const users: MapUser[] = Array.from(userMap.entries()).map(([id, username]) => ({
       id,

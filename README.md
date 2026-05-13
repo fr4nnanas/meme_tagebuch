@@ -18,7 +18,7 @@ Eine private, mobile-first Web-App für Gruppen und geteilte Projekte. Fotos wer
 | Styling | Tailwind CSS |
 | Datenbank | Supabase (PostgreSQL + RLS) |
 | Auth | Supabase Auth |
-| Storage | Supabase Storage |
+| Medien/Blobs | Cloudflare R2 (öffentlicher Endpoint; Prefixe `originals/`, `memes/`, `avatars/`), Sharp für WebP-Varianten |
 | Deployment | Vercel |
 | KI Text/Vision | OpenAI `gpt-4o` |
 | KI Bildgenerierung | OpenAI `gpt-image-2` |
@@ -62,4 +62,6 @@ npm run dev
 
 ## Umgebungsvariablen
 
-Siehe `.env.local.example` – alle Werte müssen vor dem ersten Start gesetzt werden.
+Siehe `.env.local.example` – alle Werte müssen vor dem ersten Start gesetzt werden (Supabase für Auth/DB und R2 für Bilder/Signed-URL-unabhängige öffentliche Medienpfade).
+
+Nach einer bestehenden Supabase-Installation: im Ordner **`frontend`** kann `npm run migrate:r2` die Blobs kopieren (`--dry-run` / `--limit` im Skript dokumentiert).

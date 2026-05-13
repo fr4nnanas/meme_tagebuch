@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Camera, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
 import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
-import { updateAvatarUrl } from "@/lib/actions/profile";
+import { uploadAvatarAction } from "@/lib/actions/profile";
 import { ImageCropper } from "@/components/features/upload/image-cropper";
 
 interface AvatarUploaderProps {
@@ -29,10 +28,9 @@ export function AvatarUploader({
   const cropObjectUrlRef = useRef<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(initialAvatarUrl);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
   const [isUploading, setIsUploading] = useState(false);
 
-  const busy = isUploading || isPending;
+  const busy = isUploading;
 
   useEffect(() => {
     return () => {
@@ -46,38 +44,16 @@ export function AvatarUploader({
   async function uploadAvatarFile(file: File) {
     setIsUploading(true);
     try {
-      const supabase = createClient();
-      const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-      const path = `${userId}/avatar.${ext}`;
+      const formData = new FormData();
+      formData.set("avatar", file);
+      const result = await uploadAvatarAction(formData);
 
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(path, file, {
-          upsert: true,
-          contentType: file.type,
-          cacheControl: "0",
-        });
-
-      if (uploadError) {
-        toast.error("Upload fehlgeschlagen: " + uploadError.message);
+      if ("error" in result) {
+        toast.error(result.error);
         return;
       }
-
-      const { data: publicUrlData } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(path);
-
-      const publicUrl = `${publicUrlData.publicUrl}?v=${Date.now()}`;
-
-      startTransition(async () => {
-        const result = await updateAvatarUrl(publicUrl);
-        if ("error" in result) {
-          toast.error(result.error);
-          return;
-        }
-        setAvatarUrl(publicUrl);
-        toast.success("Avatar aktualisiert.");
-      });
+      setAvatarUrl(`${result.storageKey}?v=${Date.now()}`);
+      toast.success("Avatar aktualisiert.");
     } finally {
       setIsUploading(false);
       if (inputRef.current) inputRef.current.value = "";

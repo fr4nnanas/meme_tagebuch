@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { uploadAvatarFromJpegBuffer } from "@/lib/storage/image-pipeline";
 
 export type ProfileActionResult = { error: string } | { success: true };
 
@@ -69,6 +70,55 @@ export async function updateProfile(
         err instanceof Error
           ? err.message
           : "Unbekannter Fehler beim Profil-Update.",
+    };
+  }
+}
+
+const AVATAR_MAX_BYTES = 4 * 1024 * 1024;
+
+/** Lädt Avatar nach R2 mit Varianten und speichert den Object-Key in `users.avatar_url`. */
+export async function uploadAvatarAction(
+  formData: FormData,
+): Promise<{ success: true; storageKey: string } | { error: string }> {
+  const fileRaw = formData.get("avatar");
+  if (!(fileRaw instanceof File) || fileRaw.size <= 0) {
+    return { error: "Keine gültige Bilddatei übermittelt." };
+  }
+  if (fileRaw.size > AVATAR_MAX_BYTES) {
+    return { error: "Avatar ist zu groß (max. 4 MB)." };
+  }
+  if (!fileRaw.type.startsWith("image/")) {
+    return { error: "Nur Bilddateien sind erlaubt." };
+  }
+
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { error: "Nicht eingeloggt." };
+    }
+
+    const buf = Buffer.from(await fileRaw.arrayBuffer());
+    const { storageKey } = await uploadAvatarFromJpegBuffer(user.id, buf);
+
+    const { error } = await supabase
+      .from("users")
+      .update({ avatar_url: storageKey })
+      .eq("id", user.id);
+
+    if (error) {
+      return { error: "Avatar konnte nicht gespeichert werden." };
+    }
+
+    revalidatePath(`/profile/${user.id}`);
+    return { success: true, storageKey };
+  } catch (err) {
+    return {
+      error:
+        err instanceof Error ? err.message : "Unbekannter Fehler beim Avatar-Upload.",
     };
   }
 }
