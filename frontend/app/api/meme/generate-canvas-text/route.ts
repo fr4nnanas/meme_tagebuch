@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
 import {
   canvasSystemPromptInset,
   loadProjectAiContextNormalized,
 } from "@/lib/meme/project-ai-context";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import { openaiClient } from "@/lib/meme/openai-client";
 
 export async function POST(request: NextRequest) {
   try {
@@ -57,7 +55,7 @@ Antworte NUR mit einem JSON-Objekt: {"top": string|null, "bottom": string}
       ? `Erstelle Meme-Text. Thema: ${body.userText}`
       : "Erstelle lustigen Meme-Text für dieses Foto.";
 
-    const response = await openai.chat.completions.create({
+    const response = await openaiClient().chat.completions.create({
       model: "gpt-4o",
       messages: [
         {

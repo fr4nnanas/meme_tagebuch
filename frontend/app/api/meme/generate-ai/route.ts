@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
 import {
   inlineImageEditProjectContext,
   loadProjectAiContextNormalized,
 } from "@/lib/meme/project-ai-context";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import { openaiClient } from "@/lib/meme/openai-client";
 
 // Maximale Laufzeit für KI-Bildgenerierung erhöhen
 export const maxDuration = 120;
@@ -65,7 +63,7 @@ export async function POST(request: NextRequest) {
       ? `${basePrompt} Meme-Idee vom Nutzer: ${body.userText}`
       : basePrompt;
 
-    const response = await openai.images.edit({
+    const response = await openaiClient().images.edit({
       model: "gpt-image-2",
       image: imageFile,
       prompt,

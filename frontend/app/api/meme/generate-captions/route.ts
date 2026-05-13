@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
 import { memeFormatTaxonomyBlock } from "@/lib/meme/ai-meme-master-styles";
 import {
   ideasPromptProjectContextBlock,
   loadProjectAiContextNormalized,
 } from "@/lib/meme/project-ai-context";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import { openaiClient } from "@/lib/meme/openai-client";
 
 export async function POST(request: NextRequest) {
   try {
@@ -63,7 +61,7 @@ export async function POST(request: NextRequest) {
 Vorgegebene Meme-Formate/Typen (Taxonomie — für jeden Vorschlag mindestens eines davon aufgreifen oder klar zuordenbar machen; über alle vier Ideen verteilt verschiedene Formate nutzen):
 ${memeFormatTaxonomyBlock()}`;
 
-    const response = await openai.chat.completions.create({
+    const response = await openaiClient().chat.completions.create({
       model: "gpt-4o",
       messages: [
         {

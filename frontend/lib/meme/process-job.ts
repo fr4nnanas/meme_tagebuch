@@ -1,8 +1,8 @@
-import OpenAI from "openai";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { memeAiVariantObjectKey, normalizeR2Key } from "@/lib/storage/r2-url";
 import { r2Get } from "@/lib/storage/r2";
 import { uploadMemeJpegWithWebpVariants } from "@/lib/storage/image-pipeline";
+import { openaiClient } from "@/lib/meme/openai-client";
 import {
   AI_EXPERIMENTAL_MINIMAL_LAYOUT_INSET,
   experimentalPromptInset,
@@ -16,8 +16,6 @@ import {
   inlineImageEditProjectContext,
   normalizeStoredProjectAiContext,
 } from "@/lib/meme/project-ai-context";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export interface ProcessJobParams {
   jobId: string;
@@ -245,7 +243,7 @@ async function generateAiMeme(
     Boolean(params.aiExperimentalMinimal),
   );
 
-  const response = await openai.images.edit({
+  const response = await openaiClient().images.edit({
     model: "gpt-image-2",
     image: imageFile,
     prompt,
@@ -337,7 +335,7 @@ export async function appendSecondAiVariantToJob(
     Boolean(postRow.ai_experimental_minimal),
   );
 
-  const response = await openai.images.edit({
+  const response = await openaiClient().images.edit({
     model: "gpt-image-2",
     image: imageFile,
     prompt,
@@ -414,7 +412,7 @@ Nutze top: null NUR wenn wirklich ein einzeiliges Bottom-Overlay besser wirkt al
     ? `Erstelle Meme-Text für dieses Foto. Thema/Idee des Users: ${params.userText}`
     : "Erstelle lustigen Meme-Text für dieses Foto.";
 
-  const response = await openai.chat.completions.create({
+  const response = await openaiClient().chat.completions.create({
     model: "gpt-4o",
     messages: [
       {
