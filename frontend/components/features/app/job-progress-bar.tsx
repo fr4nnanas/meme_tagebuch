@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useJobContext } from "@/components/features/app/job-context";
 import { useJobPolling } from "@/hooks/use-job-polling";
 import type { JobStatusResponse } from "@/app/api/meme/job-status/[jobId]/route";
+import { shouldOpenMemeCompletionUI } from "@/lib/meme/job-completion";
 
 // Simulierter Fortschritt solange der Job läuft (0–90%, nie 100% bevor fertig)
 function useProgressSimulation(isActive: boolean) {
@@ -39,24 +40,43 @@ function useProgressSimulation(isActive: boolean) {
 }
 
 function GlobalProgressBar() {
-  const { activeJob, markJobCompleted } = useJobContext();
+  const { activeJob, markJobCompleted, reportJobFailure } = useJobContext();
   const [visible, setVisible] = useState(false);
   const [completed, setCompleted] = useState(false);
 
   const isActive = !!activeJob;
   const progress = useProgressSimulation(isActive);
 
-  const handleCompleted = (data: JobStatusResponse) => {
-    setCompleted(true);
-    markJobCompleted(data);
-    // Bar kurz auf 100% zeigen, dann ausblenden
-    setTimeout(() => setVisible(false), 600);
-    setTimeout(() => setCompleted(false), 700);
-  };
+  const handleCompleted = useCallback(
+    (data: JobStatusResponse) => {
+      if (shouldOpenMemeCompletionUI(data)) {
+        setCompleted(true);
+        markJobCompleted(data);
+        setTimeout(() => setVisible(false), 600);
+        setTimeout(() => setCompleted(false), 700);
+        return;
+      }
+
+      if (data.errorMsg) {
+        reportJobFailure(data.errorMsg);
+        setVisible(false);
+      }
+    },
+    [markJobCompleted, reportJobFailure],
+  );
+
+  const handleFailed = useCallback(
+    (errorMsg: string) => {
+      reportJobFailure(errorMsg);
+      setVisible(false);
+    },
+    [reportJobFailure],
+  );
 
   useJobPolling({
     jobId: activeJob?.jobId ?? null,
     onCompleted: handleCompleted,
+    onFailed: handleFailed,
   });
 
   useEffect(() => {

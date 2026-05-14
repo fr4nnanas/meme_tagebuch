@@ -37,6 +37,7 @@ export const ROTATING_EXPERIMENTAL_KEY = "rotate";
 
 const MASTER_PREFIX = "master:";
 const FORMAT_PREFIX = "format:";
+const STYLIZATION_PREFIX = "stylization:";
 
 export type ExperimentalPromptCatalogEntry = {
   label: string;
@@ -117,6 +118,78 @@ export const EXPERIMENTAL_MEME_ART_STYLES: Record<
     label: "Geteilt: ich vs. andere",
     promptInset:
       "Zwei Spalten oder Hälften (z. B. „Ich“ vs. „die anderen“ / Erwartung vs. Realität): ein einziger visueller Kontrast, Pointe über die Gegenüberstellung, Text auf Deutsch.",
+  },
+};
+
+/** Visuelle Stilisierung: Ästhetik/Look — kombinierbar mit Meme-Art oder Masterprompt. */
+export const EXPERIMENTAL_STYLIZATION_STYLES: Record<
+  string,
+  ExperimentalPromptCatalogEntry
+> = {
+  oil_painting: {
+    label: "Ölgemälde / klassisches Gemälde",
+    promptInset:
+      "Rendere die Szene als klassisches Ölgemälde mit sichtbarer Pinselstruktur und warmem Galerie-Licht; Motive aus dem Foto bleiben erkennbar, Meme-Texte klar lesbar auf Deutsch.",
+  },
+  van_gogh: {
+    label: "Post-Impressionismus / expressive Pinselstriche",
+    promptInset:
+      "Interpretiere die Szene post-impressionistisch: wirbelnde Pinselstriche, kräftige Farben, expressive Konturen — ohne Motiv oder deutschen Meme-Text unleserlich zu machen.",
+  },
+  gta_san_andreas: {
+    label: "GTA San Andreas",
+    promptInset:
+      "Optik wie GTA San Andreas: leicht kantige 3D-Spielgrafik der PS2-Ära, satte Farben, urbaner Action-Look; erkennbare Foto-Motive und gut lesbare deutsche Meme-Beschriftung.",
+  },
+  gta_v: {
+    label: "Moderne Open-World-3D-Grafik",
+    promptInset:
+      "Optik wie moderne Open-World-3D-Grafik: realistischere Spielwelt mit filmischer Beleuchtung; Motive aus dem Foto bleiben identifizierbar, Texte auf Deutsch klar lesbar.",
+  },
+  lego: {
+    label: "Klemmbausteine",
+    promptInset:
+      "Baue die Szene aus Klemmbausteinen: klare Noppen, modulare Formen, spielerischer Look; erkennbare Motive und deutsche Meme-Texte bleiben gut lesbar.",
+  },
+  fps_scene: {
+    label: "Ego-Shooter-Szene",
+    promptInset:
+      "Inszeniere die Szene wie ein Ego-Shooter-Screenshot: HUD-Anmutung, waffenähnliche Perspektive oder Action-Frame — Motive aus dem Foto erkennbar, Meme-Text auf Deutsch gut lesbar.",
+  },
+  counter_strike: {
+    label: "Taktischer Shooter-Look",
+    promptInset:
+      "Visueller Look wie ein taktischer Ego-Shooter: Ego-Perspektive, kontrastreiche Map-Beleuchtung, leicht grittiger Action-Frame; Foto-Motive und deutsche Meme-Texte bleiben klar.",
+  },
+  anime: {
+    label: "Japanischer Zeichenfilmstil",
+    promptInset:
+      "Zeichne die Szene im japanischen Zeichenfilmstil: klare Linien, zellulare Flächen, ausdrucksstarke Augen — Motive aus dem Foto erkennbar, deutsche Meme-Texte gut lesbar.",
+  },
+  studio_ghibli: {
+    label: "Sanfter Animations-Märchenlook",
+    promptInset:
+      "Stilisiere weich und detailreich wie ein handgezeichneter Animations-Märchenfilm: warme Naturfarben, malerische Flächen, verspielte Lichtstimmung; erkennbare Motive, deutsche Meme-Texte klar lesbar.",
+  },
+  minecraft_voxel: {
+    label: "Voxel / 8-Bit-Pixel",
+    promptInset:
+      "Rendere als Voxel- oder 8-Bit-Pixelwelt: blockige Formen, begrenzte Farbpalette, Retro-Charme — Motive aus dem Foto noch erkennbar, deutscher Meme-Text gut lesbar.",
+  },
+  comic: {
+    label: "Comic / Graphic Novel",
+    promptInset:
+      "Gestalte als Comic oder Graphic Novel: kräftige Konturen, flächige Farben, optional Halbton oder Panel-Anmutung; erkennbare Motive, deutsche Meme-Texte klar und lesbar.",
+  },
+  vaporwave: {
+    label: "Retro-Neon-Ästhetik",
+    promptInset:
+      "Nutze eine Retro-Neon-Ästhetik: Neon-Verläufe, Retro-PC- oder Mall-Vibes, leicht verträumte 80er/90er-Anmutung — Motive aus dem Foto erkennbar, deutscher Meme-Text gut lesbar.",
+  },
+  pixar_3d: {
+    label: "Hochwertiger 3D-Animationsfilmlook",
+    promptInset:
+      "Rendere als hochwertigen 3D-Animationsfilm: weiche Formen, freundliches Licht, saubere Render-Optik; erkennbare Motive, deutsche Meme-Texte klar lesbar.",
   },
 };
 
@@ -252,6 +325,30 @@ export function experimentalPromptInset(styleKey: string): string {
   );
 }
 
+export function resolveAiStylizationKey(
+  raw: string | null | undefined,
+): string | null {
+  const t = raw?.trim();
+  if (!t) return null;
+
+  const stylizationKey = stripPrefix(t, STYLIZATION_PREFIX);
+  if (stylizationKey && EXPERIMENTAL_STYLIZATION_STYLES[stylizationKey]) {
+    return stylizationKey;
+  }
+
+  if (EXPERIMENTAL_STYLIZATION_STYLES[t]) return t;
+
+  return null;
+}
+
+export function experimentalStylizationPromptInset(
+  raw: string | null | undefined,
+): string {
+  const key = resolveAiStylizationKey(raw);
+  if (!key) return "";
+  return EXPERIMENTAL_STYLIZATION_STYLES[key]?.promptInset ?? "";
+}
+
 /** Kuratierte Meme-Formate für die Ideen-Taxonomie (nur Text-Ideen, nicht Bildgenerierung). */
 export const MEME_FORMAT_TAXONOMY: readonly string[] = [
   "Klassisches Text-oben/unten (Impact-Setup)",
@@ -294,4 +391,8 @@ export function encodeExperimentalMasterChoice(
 ): string {
   if (key === ROTATING_EXPERIMENTAL_KEY) return ROTATING_EXPERIMENTAL_KEY;
   return toMasterKey(key);
+}
+
+export function encodeExperimentalStylizationChoice(key: string): string {
+  return `${STYLIZATION_PREFIX}${key}`;
 }

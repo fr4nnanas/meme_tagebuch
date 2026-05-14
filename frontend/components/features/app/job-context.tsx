@@ -14,16 +14,23 @@ interface ActiveJob {
   postId: string;
 }
 
-interface CompletedJobData extends JobStatusResponse {
-  handled: boolean;
+interface SecondVariantTrack {
+  jobId: string;
 }
 
 interface JobContextValue {
   activeJob: ActiveJob | null;
-  completedJobData: CompletedJobData | null;
+  completedJobData: JobStatusResponse | null;
+  completionUiOpen: boolean;
+  jobFailure: string | null;
+  secondVariantTrack: SecondVariantTrack | null;
   startJob: (jobId: string, postId: string) => void;
   markJobCompleted: (data: JobStatusResponse) => void;
-  markJobHandled: () => void;
+  openCompletionUi: () => void;
+  closeCompletionUi: () => void;
+  reportJobFailure: (message: string) => void;
+  startSecondVariantTrack: (jobId: string) => void;
+  clearSecondVariantTrack: () => void;
   clearJob: () => void;
 }
 
@@ -32,37 +39,91 @@ const JobContext = createContext<JobContextValue | null>(null);
 export function JobProvider({ children }: { children: React.ReactNode }) {
   const [activeJob, setActiveJob] = useState<ActiveJob | null>(null);
   const [completedJobData, setCompletedJobData] =
-    useState<CompletedJobData | null>(null);
+    useState<JobStatusResponse | null>(null);
+  const [completionUiOpen, setCompletionUiOpen] = useState(false);
+  const [jobFailure, setJobFailure] = useState<string | null>(null);
+  const [secondVariantTrack, setSecondVariantTrack] =
+    useState<SecondVariantTrack | null>(null);
 
   const startJob = useCallback((jobId: string, postId: string) => {
     setActiveJob({ jobId, postId });
     setCompletedJobData(null);
+    setCompletionUiOpen(false);
+    setJobFailure(null);
+    setSecondVariantTrack(null);
   }, []);
 
   const markJobCompleted = useCallback((data: JobStatusResponse) => {
     setActiveJob(null);
-    setCompletedJobData({ ...data, handled: false });
+    setJobFailure(null);
+    setCompletedJobData(data);
+    setCompletionUiOpen((open) => open);
+    if ((data.variantSignedUrls?.length ?? 0) >= 2) {
+      setSecondVariantTrack(null);
+    }
   }, []);
 
-  const markJobHandled = useCallback(() => {
-    setCompletedJobData((prev) => (prev ? { ...prev, handled: true } : null));
+  const openCompletionUi = useCallback(() => {
+    setCompletionUiOpen(true);
+  }, []);
+
+  const closeCompletionUi = useCallback(() => {
+    setCompletionUiOpen(false);
+  }, []);
+
+  const reportJobFailure = useCallback((message: string) => {
+    setActiveJob(null);
+    setJobFailure(message);
+  }, []);
+
+  const startSecondVariantTrack = useCallback((jobId: string) => {
+    setSecondVariantTrack({ jobId });
+    setCompletionUiOpen(false);
+  }, []);
+
+  const clearSecondVariantTrack = useCallback(() => {
+    setSecondVariantTrack(null);
   }, []);
 
   const clearJob = useCallback(() => {
     setActiveJob(null);
     setCompletedJobData(null);
+    setCompletionUiOpen(false);
+    setJobFailure(null);
+    setSecondVariantTrack(null);
   }, []);
 
   const value = useMemo<JobContextValue>(
     () => ({
       activeJob,
       completedJobData,
+      completionUiOpen,
+      jobFailure,
+      secondVariantTrack,
       startJob,
       markJobCompleted,
-      markJobHandled,
+      openCompletionUi,
+      closeCompletionUi,
+      reportJobFailure,
+      startSecondVariantTrack,
+      clearSecondVariantTrack,
       clearJob,
     }),
-    [activeJob, completedJobData, startJob, markJobCompleted, markJobHandled, clearJob],
+    [
+      activeJob,
+      completedJobData,
+      completionUiOpen,
+      jobFailure,
+      secondVariantTrack,
+      startJob,
+      markJobCompleted,
+      openCompletionUi,
+      closeCompletionUi,
+      reportJobFailure,
+      startSecondVariantTrack,
+      clearSecondVariantTrack,
+      clearJob,
+    ],
   );
 
   return <JobContext.Provider value={value}>{children}</JobContext.Provider>;

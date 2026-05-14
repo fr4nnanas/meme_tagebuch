@@ -39,22 +39,8 @@ import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
 import { shareMemeFromPost } from "@/lib/share/web-share";
 import { getJobStatusForPostAction } from "@/lib/actions/meme-job";
 import type { JobStatusResponse } from "@/lib/meme/job-status-types";
+import { shouldOpenMemeCompletionUI } from "@/lib/meme/job-completion";
 import { MovePostProjectDialog } from "@/components/features/feed/move-post-project-dialog";
-
-function shouldOpenMemeCompletionUI(d: JobStatusResponse): boolean {
-  if (d.status !== "completed" || d.errorMsg) return false;
-  if (d.memeType === "ai_generated" && d.variantSignedUrls && d.variantSignedUrls.length > 0) {
-    return true;
-  }
-  if (
-    d.memeType === "canvas_overlay" &&
-    d.originalSignedUrl &&
-    (d.overlayTextTop || d.overlayTextBottom)
-  ) {
-    return true;
-  }
-  return false;
-}
 
 interface ProfilePostDetailSheetProps {
   postId: string | null;
@@ -358,18 +344,18 @@ export function ProfilePostDetailSheet({
     const shareSrc = post.meme_full_url ?? post.signed_url;
     if (!shareSrc) return;
     startShareTransition(async () => {
-      const outcome = await shareMemeFromPost({
+      const result = await shareMemeFromPost({
         imageUrl: shareSrc,
         username: post.user.username,
         userId: post.user_id,
         caption: currentCaption ?? post.caption ?? null,
       });
-      if (outcome === "shared") {
+      if (result.outcome === "shared") {
         toast.success("Geteilt.");
-      } else if (outcome === "downloaded") {
-        toast.success("Bild wurde heruntergeladen.");
-      } else if (outcome === "unavailable") {
-        toast.error("Teilen wird hier nicht unterstützt.");
+      } else if (result.outcome === "downloaded") {
+        toast.success("Teilen nicht möglich – Bild wurde heruntergeladen.");
+      } else if (result.outcome === "unavailable") {
+        toast.error(result.message);
       }
     });
   }

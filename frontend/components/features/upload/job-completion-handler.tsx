@@ -18,7 +18,8 @@ import { createClient } from "@/lib/supabase/client";
 
 // Dieser Wrapper wird im App-Layout gemountet und reagiert auf abgeschlossene Jobs.
 export function JobCompletionHandler() {
-  const { completedJobData, clearJob } = useJobContext();
+  const { completedJobData, completionUiOpen, closeCompletionUi, clearJob } =
+    useJobContext();
   const router = useRouter();
   const [isPosting, setIsPosting] = useState(false);
   const [discardBusy, setDiscardBusy] = useState(false);
@@ -151,8 +152,8 @@ export function JobCompletionHandler() {
     [completedJobData, clearJob, router],
   );
 
-  // Kein abgeschlossener Job oder bereits behandelt
-  if (!completedJobData || completedJobData.handled) return null;
+  // Kein abgeschlossener Job oder Abschluss-UI nicht geöffnet
+  if (!completedJobData || !completionUiOpen) return null;
 
   // Typ A: Varianten-Auswahl
   if (completedJobData.memeType === "ai_generated" && completedJobData.variantSignedUrls) {
@@ -168,6 +169,7 @@ export function JobCompletionHandler() {
           void handleAiVariantConfirm(chosen, discarded, caption)
         }
         onDiscard={() => void handleDiscardDraft()}
+        onMinimize={closeCompletionUi}
         discardBusy={discardBusy}
         isPosting={isPosting}
       />
@@ -193,9 +195,9 @@ export function JobCompletionHandler() {
             </h2>
             <button
               type="button"
-              aria-label="Entwurf verwerfen"
+              aria-label="Vorschau schließen"
               disabled={discardBusy || isPosting}
-              onClick={() => void handleDiscardDraft()}
+              onClick={closeCompletionUi}
               className="rounded-full p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 disabled:pointer-events-none disabled:opacity-40"
             >
               <X className="h-5 w-5" aria-hidden />

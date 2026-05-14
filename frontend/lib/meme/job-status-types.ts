@@ -13,4 +13,6 @@ export interface JobStatusResponse {
   overlayTextBottom?: string;
   originalSignedUrl?: string;
   errorMsg?: string;
+  secondVariantPending?: boolean;
+  secondVariantError?: string | null;
 }

@@ -17,6 +17,7 @@ import {
 import {
   appendSecondAiVariantToJob,
   processJob,
+  recordSecondAiVariantFailure,
   type JobResult,
 } from "@/lib/meme/process-job";
 
@@ -234,6 +235,7 @@ export async function startMemeJob(
   const projectId = formData.get("projectId") as string | null;
   const userText = formData.get("userText") as string | null;
   const aiMasterStyleRaw = formData.get("aiMasterStyle") as string | null;
+  const aiStylizationRaw = formData.get("aiStylization") as string | null;
   const aiExperimentalMinimalRaw = formData.get("aiExperimentalMinimal") as string | null;
   const latRaw = formData.get("lat") as string | null;
   const lngRaw = formData.get("lng") as string | null;
@@ -342,6 +344,7 @@ export async function startMemeJob(
 
   // KI-Verarbeitung asynchron nach Response starten
   const aiMasterStyleTrimmed = aiMasterStyleRaw?.trim();
+  const aiStylizationTrimmed = aiStylizationRaw?.trim();
   after(async () => {
     await processJob({
       jobId: job.id,
@@ -355,6 +358,10 @@ export async function startMemeJob(
       aiMasterStyle:
         memeType === "ai_generated" && aiMasterStyleTrimmed
           ? aiMasterStyleTrimmed
+          : undefined,
+      aiStylization:
+        memeType === "ai_generated" && aiStylizationTrimmed
+          ? aiStylizationTrimmed
           : undefined,
       aiExperimentalMinimal: aiExperimentalMinimal || undefined,
     });
@@ -461,6 +468,7 @@ export async function retryMemeJobFromDraftAction(
   const projectId = formData.get("projectId") as string | null;
   const userText = formData.get("userText") as string | null;
   const aiMasterStyleRaw = formData.get("aiMasterStyle") as string | null;
+  const aiStylizationRaw = formData.get("aiStylization") as string | null;
   const aiExperimentalMinimalRaw = formData.get("aiExperimentalMinimal") as string | null;
   const latRaw = formData.get("lat") as string | null;
   const lngRaw = formData.get("lng") as string | null;
@@ -615,6 +623,7 @@ export async function retryMemeJobFromDraftAction(
   }
 
   const aiMasterStyleTrimmed = aiMasterStyleRaw?.trim();
+  const aiStylizationTrimmed = aiStylizationRaw?.trim();
 
   after(async () => {
     await processJob({
@@ -629,6 +638,10 @@ export async function retryMemeJobFromDraftAction(
       aiMasterStyle:
         memeType === "ai_generated" && aiMasterStyleTrimmed
           ? aiMasterStyleTrimmed
+          : undefined,
+      aiStylization:
+        memeType === "ai_generated" && aiStylizationTrimmed
+          ? aiStylizationTrimmed
           : undefined,
       aiExperimentalMinimal: aiExperimentalMinimal || undefined,
     });
@@ -673,6 +686,10 @@ export async function requestSecondAiMemeVariant(
     };
   }
 
+  if (result.secondVariantPending) {
+    return { error: "Die zweite Variante wird bereits erstellt." };
+  }
+
   const { data: jobPost } = await supabase
     .from("jobs")
     .select("post_id")
@@ -700,15 +717,37 @@ export async function requestSecondAiMemeVariant(
     return { error: quotaExceededMessage(st) };
   }
 
-  try {
-    await appendSecondAiVariantToJob(jobId, user.id);
-  } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Generierung fehlgeschlagen";
-    return { error: message };
+  const pendingResult: JobResult = {
+    ...result,
+    secondVariantPending: true,
+    secondVariantError: null,
+  };
+
+  const { error: pendingUpdateError } = await supabase
+    .from("jobs")
+    .update({
+      error_msg: JSON.stringify(pendingResult),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", jobId)
+    .eq("user_id", user.id);
+
+  if (pendingUpdateError) {
+    return { error: "Job konnte nicht aktualisiert werden" };
   }
 
-  await persistAiQuotaIncrement(supabase, user.id, quotaProjectId, st);
+  const userId = user.id;
+  after(async () => {
+    try {
+      await appendSecondAiVariantToJob(jobId, userId);
+      const quotaSupabase = await createClient();
+      await persistAiQuotaIncrement(quotaSupabase, userId, quotaProjectId, st);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Generierung fehlgeschlagen";
+      await recordSecondAiVariantFailure(jobId, userId, message);
+    }
+  });
 
   return {};
 }

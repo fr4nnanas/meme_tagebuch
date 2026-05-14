@@ -192,18 +192,18 @@ export function FeedCard({
     const shareSrc = post.meme_full_url ?? post.signed_url;
     if (!shareSrc || isSharing) return;
     startShareTransition(async () => {
-      const outcome = await shareMemeFromPost({
+      const result = await shareMemeFromPost({
         imageUrl: shareSrc,
         username: post.user.username,
         userId: post.user_id,
         caption: currentCaption ?? post.caption ?? null,
       });
-      if (outcome === "shared") {
+      if (result.outcome === "shared") {
         toast.success("Geteilt.");
-      } else if (outcome === "downloaded") {
-        toast.success("Bild wurde heruntergeladen.");
-      } else if (outcome === "unavailable") {
-        toast.error("Teilen wird hier nicht unterstützt.");
+      } else if (result.outcome === "downloaded") {
+        toast.success("Teilen nicht möglich – Bild wurde heruntergeladen.");
+      } else if (result.outcome === "unavailable") {
+        toast.error(result.message);
       }
     });
   }

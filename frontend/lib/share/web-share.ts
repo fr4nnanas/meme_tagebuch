@@ -2,6 +2,9 @@
  * Web Share API mit Zwischenablage- und Download-Fallbacks.
  */
 
+import { downloadBlob } from "@/lib/media/download-blob";
+import { fetchRemoteImageBlob } from "@/lib/media/fetch-remote-image";
+
 export function isWebShareAvailable(): boolean {
   return typeof navigator !== "undefined" && typeof navigator.share === "function";
 }
@@ -32,17 +35,37 @@ export type ShareOutcome =
   | "cancelled"
   | "unavailable";
 
-function downloadBlobAsFile(blob: Blob, filename: string): void {
-  if (typeof document === "undefined") return;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.rel = "noopener";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+export type ShareMemeResult =
+  | { outcome: "shared" | "downloaded" | "cancelled" }
+  | { outcome: "unavailable"; message: string };
+
+function imageExtension(blob: Blob): "png" | "jpeg" {
+  return blob.type.includes("png") ? "png" : "jpeg";
+}
+
+function normalizeShareImageType(blob: Blob): string {
+  if (blob.type.includes("png")) return "image/png";
+  return "image/jpeg";
+}
+
+function buildMemeFilename(userId: string, blob: Blob): string {
+  return `meme-${userId.slice(0, 8)}.${imageExtension(blob)}`;
+}
+
+async function tryShareFiles(data: ShareData): Promise<"shared" | "unsupported" | "cancelled"> {
+  if (
+    typeof navigator.canShare === "function" &&
+    !navigator.canShare(data)
+  ) {
+    return "unsupported";
+  }
+  try {
+    await navigator.share(data);
+    return "shared";
+  } catch (e) {
+    if ((e as Error).name === "AbortError") return "cancelled";
+    return "unsupported";
+  }
 }
 
 /** Meme nur als Bilddatei teilen (ohne URL oder Profil-Link im System-Dialog). */
@@ -51,62 +74,43 @@ export async function shareMemeFromPost(options: {
   username: string;
   userId: string;
   caption: string | null;
-}): Promise<ShareOutcome> {
+}): Promise<ShareMemeResult> {
   const title = `Meme von ${options.username}`;
-  let imageBlob: Blob | null = null;
 
-  if (options.imageUrl && typeof navigator !== "undefined") {
-    try {
-      const res = await fetch(options.imageUrl);
-      if (res.ok) {
-        imageBlob = await res.blob();
-        const ext = imageBlob.type.includes("png") ? "png" : "jpeg";
-        const file = new File(
-          [imageBlob],
-          `meme-${options.userId.slice(0, 8)}.${ext}`,
-          { type: imageBlob.type || "image/jpeg" },
-        );
-
-        const tryShareFiles = async (data: ShareData): Promise<boolean> => {
-          if (
-            typeof navigator.canShare === "function" &&
-            !navigator.canShare(data)
-          ) {
-            return false;
-          }
-          try {
-            await navigator.share(data);
-            return true;
-          } catch (e) {
-            if ((e as Error).name === "AbortError") throw e;
-            return false;
-          }
-        };
-
-        try {
-          if (await tryShareFiles({ title, files: [file] })) return "shared";
-        } catch (e) {
-          if ((e as Error).name === "AbortError") return "cancelled";
-        }
-
-        try {
-          if (await tryShareFiles({ files: [file] })) return "shared";
-        } catch (e) {
-          if ((e as Error).name === "AbortError") return "cancelled";
-        }
-      }
-    } catch {
-      /* Fetch fehlgeschlagen — unten ggf. unavailable */
-    }
+  if (!options.imageUrl) {
+    return { outcome: "unavailable", message: "Kein Bild zum Teilen vorhanden" };
   }
 
-  if (imageBlob && typeof document !== "undefined") {
-    const ext = imageBlob.type.includes("png") ? "png" : "jpeg";
-    downloadBlobAsFile(imageBlob, `meme-${options.userId.slice(0, 8)}.${ext}`);
-    return "downloaded";
+  const fetched = await fetchRemoteImageBlob(options.imageUrl);
+  if (!fetched.ok) {
+    return { outcome: "unavailable", message: fetched.message };
   }
 
-  return "unavailable";
+  const imageBlob = fetched.blob;
+  const filename = buildMemeFilename(options.userId, imageBlob);
+  const file = new File([imageBlob], filename, {
+    type: normalizeShareImageType(imageBlob),
+  });
+
+  if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+    const withTitle = await tryShareFiles({ title, files: [file] });
+    if (withTitle === "shared") return { outcome: "shared" };
+    if (withTitle === "cancelled") return { outcome: "cancelled" };
+
+    const filesOnly = await tryShareFiles({ files: [file] });
+    if (filesOnly === "shared") return { outcome: "shared" };
+    if (filesOnly === "cancelled") return { outcome: "cancelled" };
+  }
+
+  if (typeof document !== "undefined") {
+    downloadBlob(imageBlob, filename);
+    return { outcome: "downloaded" };
+  }
+
+  return {
+    outcome: "unavailable",
+    message: "Teilen wird auf diesem Gerät nicht unterstützt",
+  };
 }
 
 /** Link zum Projekt-Feed (Mitglieder öffnen dasselbe Projekt per Query). */

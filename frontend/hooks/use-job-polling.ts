@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
-import { toast } from "sonner";
 import type { JobStatusResponse } from "@/app/api/meme/job-status/[jobId]/route";
 
 const POLL_INTERVAL_MS = 3000;
@@ -45,12 +44,10 @@ export function useJobPolling({
 
       if (data.status === "completed") {
         stopPolling();
-        toast.success("Dein Meme ist fertig! 🎉");
         onCompleted(data);
       } else if (data.status === "failed") {
         stopPolling();
         const errorMsg = data.errorMsg ?? "KI-Verarbeitung fehlgeschlagen";
-        toast.error(`Fehler: ${errorMsg}`);
         onFailed?.(errorMsg);
       }
     } catch {

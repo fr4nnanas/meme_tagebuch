@@ -9,6 +9,7 @@ import { ProjectDeepLinkSync } from "@/components/features/app/project-deeplink-
 import { BottomNav } from "@/components/features/app/bottom-nav";
 import { JobProvider } from "@/components/features/app/job-context";
 import { GlobalProgressBar } from "@/components/features/app/job-progress-bar";
+import { MemeJobBanner } from "@/components/features/app/meme-job-banner";
 import { JobCompletionHandler } from "@/components/features/upload/job-completion-handler";
 import { InterimWelcomeBanner } from "@/components/features/app/interim-welcome-banner";
 import { shouldShowInterimWelcomeBanner } from "@/lib/app/interim-welcome";
@@ -67,6 +68,7 @@ export default async function AppLayout({
       </Suspense>
       <JobProvider>
         <GlobalProgressBar />
+        <MemeJobBanner />
         <div className="flex min-h-screen flex-col bg-zinc-900 text-zinc-100">
           <main className="mx-auto w-full max-w-md flex-1 pb-24">
             {showInterimWelcome ? (

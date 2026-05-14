@@ -3,7 +3,10 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Star } from "lucide-react";
 import { toast } from "sonner";
-import { fullStarsFromAverage } from "@/lib/meme/star-display";
+import {
+  fullStarsFromAverage,
+  fullStarsFromUserRating,
+} from "@/lib/meme/star-display";
 import {
   setMyPostStarRatingAction,
   type SetMyPostStarRatingResult,
@@ -24,8 +27,8 @@ interface PostStarRatingProps {
   interactive: boolean;
   /**
    * false = nach erfolgreichem Speichern Ø/Anzahl und Sortierung im Parent unverändert lassen
-   * (z. B. Projekt-Raster bis Reload). Eigene Bewertung wird trotzdem gespeichert; gefüllte Sterne
-   * zeigen dann deine Vergabe, der Ø im Tooltip bleibt bis zum Neuladen der alte Stand.
+   * (z. B. Projekt-Raster bis Reload). Eigene Bewertung wird trotzdem gespeichert; der Ø im
+   * Tooltip bleibt bis zum Neuladen der alte Stand.
    */
   updateAggregateDisplayAfterSubmit?: boolean;
   onUpdated?: (next: PostStarRatingSnapshot) => void;
@@ -50,6 +53,9 @@ export function PostStarRating({
   const [, startTransition] = useTransition();
   /** Verhindert, dass Props-Updates nach Submit die lokale Bewertung wieder überschreiben (Raster mit defer). */
   const lastSyncedPostIdRef = useRef<string | null>(null);
+  const lastPropsMineRef = useRef(myStarRating);
+  const lastPropsAvgRef = useRef(starRatingAvg);
+  const lastPropsCountRef = useRef(starRatingCount);
 
   useEffect(() => {
     if (lastSyncedPostIdRef.current !== postId) {
@@ -57,12 +63,24 @@ export function PostStarRating({
       setAvg(starRatingAvg);
       setCount(starRatingCount);
       setMine(myStarRating);
+      lastPropsMineRef.current = myStarRating;
+      lastPropsAvgRef.current = starRatingAvg;
+      lastPropsCountRef.current = starRatingCount;
       return;
     }
-    if (updateAggregateDisplayAfterSubmit) {
-      setAvg(starRatingAvg);
-      setCount(starRatingCount);
+
+    if (myStarRating !== lastPropsMineRef.current) {
+      lastPropsMineRef.current = myStarRating;
       setMine(myStarRating);
+    }
+
+    if (starRatingAvg !== lastPropsAvgRef.current) {
+      lastPropsAvgRef.current = starRatingAvg;
+      setAvg(starRatingAvg);
+    }
+    if (starRatingCount !== lastPropsCountRef.current) {
+      lastPropsCountRef.current = starRatingCount;
+      setCount(starRatingCount);
     }
   }, [
     postId,
@@ -72,12 +90,8 @@ export function PostStarRating({
     updateAggregateDisplayAfterSubmit,
   ]);
 
-  const displayFull = fullStarsFromAverage(avg);
-  /** Im Raster (defer): Füllung = eigene Vergabe, damit sofort sichtbar; sonst Ø gerundet. */
-  const filledStarCount =
-    !updateAggregateDisplayAfterSubmit && mine != null
-      ? Math.min(5, Math.max(0, Math.round(Number(mine))))
-      : displayFull;
+  const outlineStarCount = fullStarsFromAverage(avg);
+  const innerStarCount = fullStarsFromUserRating(mine);
 
   const baseTitle =
     avg != null && count > 0
@@ -86,7 +100,7 @@ export function PostStarRating({
         ? "Noch keine Bewertungen"
         : "Bewertung";
   const titleHint =
-    !updateAggregateDisplayAfterSubmit && mine != null
+    mine != null
       ? `${baseTitle} · Deine Bewertung: ${mine} Stern${mine === 1 ? "" : "e"}`
       : baseTitle;
 
@@ -112,8 +126,8 @@ export function PostStarRating({
       if (updateAggregateDisplayAfterSubmit) {
         setAvg(snap.star_rating_avg);
         setCount(snap.star_rating_count);
-        onUpdated?.(snap);
       }
+      onUpdated?.(snap);
     });
   }
 
@@ -137,7 +151,17 @@ export function PostStarRating({
     >
       <div className={`flex items-center ${innerGap}`}>
         {[1, 2, 3, 4, 5].map((n) => {
-          const filled = filledStarCount >= n;
+          const hasOutline = outlineStarCount >= n;
+          const hasFill = innerStarCount >= n;
+          const starClassName = hasFill
+            ? "fill-amber-400"
+            : "fill-none";
+          const strokeClassName = hasOutline
+            ? "stroke-red-500"
+            : hasFill
+              ? "stroke-amber-400"
+              : "stroke-zinc-500";
+          const strokeWidth = hasOutline || !hasFill ? 1.8 : 0;
           return (
             <button
               key={n}
@@ -153,8 +177,8 @@ export function PostStarRating({
               aria-pressed={mine === n}
             >
               <Star
-                className={`${starSz} ${filled ? "fill-amber-400" : "fill-none"} stroke-amber-400`}
-                strokeWidth={filled ? 0 : 1.8}
+                className={`${starSz} ${starClassName} ${strokeClassName}`}
+                strokeWidth={strokeWidth}
               />
             </button>
           );

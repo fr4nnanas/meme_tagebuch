@@ -69,6 +69,8 @@ export async function buildJobStatusResponse(
       variantSignedUrls,
       variantPaths: result.variantPaths,
       originalImagePath: post?.original_image_url,
+      secondVariantPending: result.secondVariantPending === true,
+      secondVariantError: result.secondVariantError ?? null,
     };
   }
 

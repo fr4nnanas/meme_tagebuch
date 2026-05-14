@@ -9,7 +9,7 @@ import {
 } from "react";
 import type { MemeStarSortMode } from "@/lib/actions/export";
 import { sortPostsForDisplay } from "@/lib/meme/sort-posts";
-import { PostStarRating } from "@/components/shared/post-star-rating";
+import { PostStarRating, type PostStarRatingSnapshot } from "@/components/shared/post-star-rating";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ImageIcon, Loader2, Trash2 } from "lucide-react";
@@ -182,6 +182,14 @@ export function ProjectMemeGrid({
       const postsRaw = (data ?? []) as RawPost[];
 
       const postIds = postsRaw.map((p) => p.id);
+      const myStars =
+        postIds.length > 0
+          ? await fetchMyStarRatingsForPostIds(
+              supabase,
+              currentUserId,
+              postIds,
+            )
+          : new Map<string, number>();
 
       const posts: Omit<
         PostThumb,
@@ -200,7 +208,7 @@ export function ProjectMemeGrid({
           star_rating_avg:
             p.star_rating_avg != null ? Number(p.star_rating_avg) : null,
           star_rating_count: Number.isFinite(cnt) ? cnt : 0,
-          my_star_rating: null,
+          my_star_rating: myStars.get(p.id) ?? null,
           username: u?.username ?? "Unbekannt",
           avatar_url: u?.avatar_url ?? null,
         };
@@ -242,29 +250,6 @@ export function ProjectMemeGrid({
         };
       });
 
-      if (postIds.length > 0) {
-        void fetchMyStarRatingsForPostIds(
-          supabase,
-          currentUserId,
-          postIds,
-        ).then((myStars) => {
-          setResult((prev) => {
-            if (!prev || prev.projectId !== projectId) return prev;
-            const idSet = new Set(postIds);
-            return {
-              ...prev,
-              posts: prev.posts.map((post) =>
-                idSet.has(post.id)
-                  ? {
-                      ...post,
-                      my_star_rating: myStars.get(post.id) ?? null,
-                    }
-                  : post,
-              ),
-            };
-          });
-        });
-      }
     } finally {
       setIsLoading(false);
     }
@@ -372,8 +357,10 @@ export function ProjectMemeGrid({
             className="w-full max-w-xs rounded-lg border border-zinc-700 bg-zinc-900/90 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-orange-500"
           >
             <option value="created_desc">Neueste zuerst (chronologisch)</option>
-            <option value="stars_desc">Sterne: höchste zuerst</option>
-            <option value="stars_asc">Sterne: niedrigste zuerst</option>
+            <option value="stars_desc">Durchschnitt: höchste zuerst</option>
+            <option value="stars_asc">Durchschnitt: niedrigste zuerst</option>
+            <option value="my_stars_desc">Meine Sterne: höchste zuerst</option>
+            <option value="my_stars_asc">Meine Sterne: niedrigste zuerst</option>
           </select>
         </div>
       )}
@@ -489,6 +476,20 @@ export function ProjectMemeGrid({
                           updateAggregateDisplayAfterSubmit={false}
                           compact
                           className="justify-center gap-0"
+                          onUpdated={(v: PostStarRatingSnapshot) => {
+                            setResult((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    posts: prev.posts.map((x) =>
+                                      x.id === post.id
+                                        ? { ...x, my_star_rating: v.my_star_rating }
+                                        : x,
+                                    ),
+                                  }
+                                : prev,
+                            );
+                          }}
                         />
                       </div>
                     ) : null}

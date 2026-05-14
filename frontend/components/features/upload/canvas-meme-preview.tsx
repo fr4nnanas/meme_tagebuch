@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Download, Loader2, Send, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { downloadBlob } from "@/lib/media/download-blob";
 
 interface CanvasMemePreviewProps {
   originalImageUrl: string;
@@ -196,6 +198,7 @@ export function CanvasMemePreview({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [caption, setCaption] = useState("");
   const [rendered, setRendered] = useState(false);
+  const [downloadBusy, setDownloadBusy] = useState(false);
 
   const renderCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -342,16 +345,14 @@ export function CanvasMemePreview({
   }, []);
 
   const handleDownload = useCallback(async () => {
+    setDownloadBusy(true);
     try {
       const blob = await getMemeBlob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "meme.jpg";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Download fehlgeschlagen:", err);
+      downloadBlob(blob, "meme.jpg");
+    } catch {
+      toast.error("Download fehlgeschlagen");
+    } finally {
+      setDownloadBusy(false);
     }
   }, [getMemeBlob]);
 
@@ -403,11 +404,15 @@ export function CanvasMemePreview({
           <button
             type="button"
             onClick={() => void handleDownload()}
-            disabled={!rendered || discardBusy}
+            disabled={!rendered || discardBusy || downloadBusy || isPosting}
             className="inline-flex min-h-[3rem] flex-1 min-w-[43%] items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 disabled:opacity-50"
           >
-            <Download className="h-4 w-4 shrink-0" />
-            Download
+            {downloadBusy ? (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 shrink-0" />
+            )}
+            {downloadBusy ? "Download läuft…" : "Download"}
           </button>
           <button
             type="button"

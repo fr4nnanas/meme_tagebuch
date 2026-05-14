@@ -23,9 +23,11 @@ import {
 import {
   EXPERIMENTAL_MEME_ART_STYLES,
   EXPERIMENTAL_NAMED_MASTER_PROMPTS,
+  EXPERIMENTAL_STYLIZATION_STYLES,
   ROTATING_EXPERIMENTAL_KEY,
   encodeExperimentalMasterChoice,
   encodeExperimentalMemeArtChoice,
+  encodeExperimentalStylizationChoice,
 } from "@/lib/meme/ai-meme-master-styles";
 import { ImageCropper } from "@/components/features/upload/image-cropper";
 import { HorizontalSnapScroller } from "@/components/shared/horizontal-snap-scroller";
@@ -163,6 +165,7 @@ export function UploadFlow() {
   const [experimentMasterChoice, setExperimentMasterChoice] = useState(
     ROTATING_EXPERIMENTAL_KEY,
   );
+  const [experimentStylizationKey, setExperimentStylizationKey] = useState("");
   const [experimentMinimalLayout, setExperimentMinimalLayout] = useState(false);
 
   const [userText, setUserText] = useState("");
@@ -467,6 +470,12 @@ export function UploadFlow() {
       if (experimentMinimalLayout) {
         formData.append("aiExperimentalMinimal", "1");
       }
+      if (experimentStylizationKey) {
+        formData.append(
+          "aiStylization",
+          encodeExperimentalStylizationChoice(experimentStylizationKey),
+        );
+      }
     }
 
     if (retryPostId) {
@@ -497,6 +506,7 @@ export function UploadFlow() {
     gps,
     experimentMemeArtKey,
     experimentMasterChoice,
+    experimentStylizationKey,
     experimentMinimalLayout,
     startJob,
     router,
@@ -949,7 +959,7 @@ export function UploadFlow() {
           <div className="space-y-3 rounded-xl border border-cyan-600/35 bg-cyan-950/30 px-3 py-2.5">
             <p className="text-xs leading-snug text-zinc-400">
               Meme-Art und Masterprompt schließen sich aus — wähle jeweils nur
-              eine Steuerung.
+              eine Steuerung. Stilisierung ist optional und kombinierbar.
             </p>
             <div className="space-y-1.5">
               <label
@@ -1012,6 +1022,29 @@ export function UploadFlow() {
                 ),
               )}
             </select>
+            </div>
+            <div className="space-y-1.5">
+              <label
+                className="text-xs font-medium text-zinc-300"
+                htmlFor="experiment-stylization"
+              >
+                Stilisierung
+              </label>
+              <select
+                id="experiment-stylization"
+                value={experimentStylizationKey}
+                onChange={(e) => setExperimentStylizationKey(e.target.value)}
+                className="w-full rounded-lg border border-cyan-800/50 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-orange-500"
+              >
+                <option value="">Keine zusätzliche Stilisierung</option>
+                {Object.entries(EXPERIMENTAL_STYLIZATION_STYLES).map(
+                  ([key, meta]) => (
+                    <option key={key} value={key}>
+                      {meta.label}
+                    </option>
+                  ),
+                )}
+              </select>
             </div>
             <label className="flex cursor-pointer items-start gap-2.5 text-left">
               <input

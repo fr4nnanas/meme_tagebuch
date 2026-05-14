@@ -12,8 +12,9 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { JobStatusResponse } from "@/app/api/meme/job-status/[jobId]/route";
 import { useJobContext } from "@/components/features/app/job-context";
+import { downloadBlob } from "@/lib/media/download-blob";
+import { fetchRemoteImageBlob } from "@/lib/media/fetch-remote-image";
 import { requestSecondAiMemeVariant } from "@/lib/actions/upload";
 
 interface VariantPickerModalProps {
@@ -27,6 +28,7 @@ interface VariantPickerModalProps {
     caption: string,
   ) => void;
   onDiscard: () => void;
+  onMinimize?: () => void;
   discardBusy?: boolean;
   isPosting: boolean;
 }
@@ -38,10 +40,11 @@ export function VariantPickerModal({
   postId: _postId,
   onConfirm,
   onDiscard,
+  onMinimize,
   discardBusy = false,
   isPosting,
 }: VariantPickerModalProps) {
-  const { markJobCompleted } = useJobContext();
+  const { startSecondVariantTrack } = useJobContext();
   const [selected, setSelected] = useState<0 | 1 | null>(
     variantUrls.length >= 2 ? null : 0,
   );
@@ -67,17 +70,17 @@ export function VariantPickerModal({
       for (let i = 0; i < variantUrls.length; i++) {
         const url = variantUrls[i];
         if (!url) continue;
-        const res = await fetch(url);
-        const blob = await res.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = objectUrl;
-        a.download =
+        const fetched = await fetchRemoteImageBlob(url);
+        if (!fetched.ok) {
+          toast.error(fetched.message);
+          return;
+        }
+        downloadBlob(
+          fetched.blob,
           variantUrls.length >= 2
             ? `meme_variante_${i + 1}.jpg`
-            : `meme.jpg`;
-        a.click();
-        URL.revokeObjectURL(objectUrl);
+            : "meme.jpg",
+        );
         if (i < variantUrls.length - 1) {
           await new Promise((r) => setTimeout(r, 250));
         }
@@ -97,26 +100,15 @@ export function VariantPickerModal({
         toast.error(res.error);
         return;
       }
-      const statusRes = await fetch(`/api/meme/job-status/${jobId}`, {
-        cache: "no-store",
-      });
-      if (!statusRes.ok) {
-        toast.error("Status konnte nicht geladen werden");
-        return;
-      }
-      const data = (await statusRes.json()) as JobStatusResponse;
-      if (data.status !== "completed" || !data.variantSignedUrls?.length) {
-        toast.error("Keine zweite Variante empfangen");
-        return;
-      }
-      markJobCompleted(data);
-      toast.success("Zweite Variante ist da");
+      startSecondVariantTrack(jobId);
+      toast.message("Zweite Variante wird im Hintergrund erstellt …");
+      onMinimize?.();
     } catch {
-      toast.error("Zweite Variante fehlgeschlagen");
+      toast.error("Zweite Variante konnte nicht gestartet werden");
     } finally {
       setSecondVariantBusy(false);
     }
-  }, [jobId, markJobCompleted]);
+  }, [jobId, onMinimize, startSecondVariantTrack]);
 
   const handleConfirm = useCallback(() => {
     if (variantUrls.length === 1) {
@@ -155,11 +147,9 @@ export function VariantPickerModal({
             </h2>
             <button
               type="button"
-              onClick={() => {
-                void onDiscard();
-              }}
-              aria-label="Entwurf verwerfen"
-              disabled={discardBusy || isPosting || secondVariantBusy || downloadBusy}
+              onClick={() => onMinimize?.()}
+              aria-label="Dialog schließen"
+              disabled={discardBusy || isPosting || downloadBusy}
               className="rounded-full p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 disabled:pointer-events-none disabled:opacity-40"
             >
               <X className="h-5 w-5" aria-hidden />
@@ -234,7 +224,7 @@ export function VariantPickerModal({
               <button
                 type="button"
                 onClick={() => void handleRequestSecondVariant()}
-                disabled={secondVariantBusy || isPosting || discardBusy || downloadBusy}
+                disabled={isPosting || discardBusy || downloadBusy}
                 className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-600 bg-zinc-800/50 py-3 text-sm font-medium text-zinc-200 transition-colors hover:border-orange-500/50 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {secondVariantBusy ? (
@@ -268,7 +258,6 @@ export function VariantPickerModal({
                 disabled={
                   downloadBusy ||
                   isPosting ||
-                  secondVariantBusy ||
                   discardBusy
                 }
                 title={
@@ -289,7 +278,7 @@ export function VariantPickerModal({
                 type="button"
                 onClick={handleConfirm}
                 disabled={
-                  !canPost || isPosting || secondVariantBusy || discardBusy || downloadBusy
+                  !canPost || isPosting || discardBusy || downloadBusy
                 }
                 className="inline-flex min-h-[3rem] flex-[1_1_100%] items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-[2] sm:min-w-0 sm:flex-nowrap"
               >
@@ -304,7 +293,7 @@ export function VariantPickerModal({
                 void onDiscard();
               }}
               disabled={
-                isPosting || secondVariantBusy || discardBusy || downloadBusy
+                isPosting || discardBusy || downloadBusy
               }
               className="flex w-full min-h-11 items-center justify-center gap-2 rounded-xl border border-red-950/70 bg-red-950/25 py-3 text-sm font-medium text-red-300/95 transition-colors hover:border-red-500/50 hover:bg-red-950/45 disabled:cursor-not-allowed disabled:opacity-50"
             >

@@ -6,9 +6,12 @@ import { compositeReferenceJpegs } from "@/lib/storage/reference-composite";
 import { openaiClient } from "@/lib/meme/openai-client";
 import {
   AI_EXPERIMENTAL_MINIMAL_LAYOUT_INSET,
+  encodeExperimentalStylizationChoice,
   experimentalPromptInset,
+  experimentalStylizationPromptInset,
   EXPERIMENTAL_AI_MEME_BASE_PROMPT,
   resolveAiMasterStyleKey,
+  resolveAiStylizationKey,
   STANDARD_AI_MASTER_KEY,
   STANDARD_AI_MEME_BASE_PROMPT,
 } from "@/lib/meme/ai-meme-master-styles";
@@ -30,6 +33,8 @@ export interface ProcessJobParams {
   originalPath: string;
   /** Rohwert aus dem Formular: Preset-Key, „rotate“ oder leer (Standard) */
   aiMasterStyle?: string | null;
+  /** Experimenteller Modus: visuelle Stilisierung (optional, kombinierbar) */
+  aiStylization?: string | null;
   /** Experimenteller Modus: sehr reduzierte Bildelemente (nur bei nicht-Standard-Master) */
   aiExperimentalMinimal?: boolean;
 }
@@ -47,6 +52,12 @@ export type JobResult =
       userText?: string;
       /** Aufgelöster Master-Stil (nach Rotation), damit Variante 2 denselben Prompt nutzt */
       aiMasterStyle?: string;
+      /** Gewählte Stilisierung für Variante 2 */
+      aiStylization?: string;
+      /** Zweite Variante läuft asynchron im Hintergrund */
+      secondVariantPending?: boolean;
+      /** Fehlertext der letzten Hintergrund-Generierung */
+      secondVariantError?: string | null;
     }
   | {
       type: "canvas_overlay";
@@ -231,6 +242,7 @@ async function buildAiMemePrompt(
   resolvedMasterStyleKey: string = STANDARD_AI_MASTER_KEY,
   aiExperimentalMinimal: boolean = false,
   dualReference: boolean = false,
+  aiStylization?: string | null,
 ): Promise<string> {
   const { data: project } = await supabase
     .from("projects")
@@ -239,6 +251,7 @@ async function buildAiMemePrompt(
     .maybeSingle();
 
   const styleExtra = experimentalPromptInset(resolvedMasterStyleKey);
+  const stylizationExtra = experimentalStylizationPromptInset(aiStylization);
   const baseCore =
     resolvedMasterStyleKey === STANDARD_AI_MASTER_KEY
       ? STANDARD_AI_MEME_BASE_PROMPT
@@ -249,7 +262,10 @@ async function buildAiMemePrompt(
       ? ` ${AI_EXPERIMENTAL_MINIMAL_LAYOUT_INSET}`
       : "";
   const basePrompt =
-    baseCore + (styleExtra ? ` ${styleExtra}` : "") + minimalExtra;
+    baseCore +
+    (styleExtra ? ` ${styleExtra}` : "") +
+    (stylizationExtra ? ` ${stylizationExtra}` : "") +
+    minimalExtra;
 
   const normalized = normalizeStoredProjectAiContext(project?.ai_prompt_context);
   const contextPart = inlineImageEditProjectContext(normalized);
@@ -274,6 +290,9 @@ async function generateAiMeme(
     params.aiMasterStyle ?? null,
     params.postId,
   );
+  const resolvedStylizationKey = resolveAiStylizationKey(
+    params.aiStylization ?? null,
+  );
 
   const prompt = await buildAiMemePrompt(
     supabase,
@@ -282,6 +301,7 @@ async function generateAiMeme(
     resolvedMasterKey,
     Boolean(params.aiExperimentalMinimal),
     dualReference,
+    params.aiStylization ?? null,
   );
 
   const response = await openaiClient().images.edit({
@@ -318,6 +338,13 @@ async function generateAiMeme(
     ...(params.userText ? { userText: params.userText } : {}),
     ...(resolvedMasterKey !== STANDARD_AI_MASTER_KEY
       ? { aiMasterStyle: resolvedMasterKey }
+      : {}),
+    ...(resolvedStylizationKey
+      ? {
+          aiStylization: encodeExperimentalStylizationChoice(
+            resolvedStylizationKey,
+          ),
+        }
       : {}),
   };
 }
@@ -380,6 +407,7 @@ export async function appendSecondAiVariantToJob(
     result.aiMasterStyle ?? STANDARD_AI_MASTER_KEY,
     Boolean(postRow.ai_experimental_minimal),
     reference.dual,
+    result.aiStylization ?? null,
   );
 
   const response = await openaiClient().images.edit({
@@ -412,6 +440,9 @@ export async function appendSecondAiVariantToJob(
     ...(result.aiMasterStyle !== undefined
       ? { aiMasterStyle: result.aiMasterStyle }
       : {}),
+    ...(result.aiStylization !== undefined
+      ? { aiStylization: result.aiStylization }
+      : {}),
   };
 
   const { error: updateError } = await supabase
@@ -425,6 +456,48 @@ export async function appendSecondAiVariantToJob(
   if (updateError) {
     throw new Error(`Job konnte nicht aktualisiert werden: ${updateError.message}`);
   }
+}
+
+export async function recordSecondAiVariantFailure(
+  jobId: string,
+  userId: string,
+  message: string,
+): Promise<void> {
+  const supabase = createServiceRoleClient();
+
+  const { data: job, error: jobError } = await supabase
+    .from("jobs")
+    .select("id, status, error_msg")
+    .eq("id", jobId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (jobError || !job || job.status !== "completed" || !job.error_msg) {
+    return;
+  }
+
+  let result: JobResult;
+  try {
+    result = JSON.parse(job.error_msg) as JobResult;
+  } catch {
+    return;
+  }
+
+  if (result.type !== "ai_generated") return;
+
+  const failed: JobResult = {
+    ...result,
+    secondVariantPending: false,
+    secondVariantError: message,
+  };
+
+  await supabase
+    .from("jobs")
+    .update({
+      error_msg: JSON.stringify(failed),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", jobId);
 }
 
 async function generateCanvasText(
