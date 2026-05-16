@@ -9,6 +9,7 @@ import {
   R2_MEMES_PREFIX,
   R2_ORIGINAL_PREFIX,
   safeR2Url,
+  storageKeyFromPostMediaField,
 } from "@/lib/storage/r2-url";
 
 async function fetchImageBlob(url: string): Promise<Blob | null> {
@@ -126,7 +127,9 @@ export async function buildProjectZipBlob(
 
       imgFolder!.file(`${post.id}.jpg`, fileBlob);
 
-      const origPathNorm = normalizeR2Key(post.original_image_url);
+      const origPathNorm =
+        storageKeyFromPostMediaField(post.original_image_url) ??
+        normalizeR2Key(post.original_image_url);
       if (origPathNorm) {
         const ok = canonicalOriginalStorageKey(origPathNorm);
         const origUrl = safeR2Url(ok, "full");

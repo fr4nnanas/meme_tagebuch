@@ -7,7 +7,8 @@ import {
   normalizeR2Key,
   originalObjectKey,
   originalReference2ObjectKey,
-  r2Url,
+  resolvePostMediaPublicUrl,
+  storageKeyFromPostMediaField,
 } from "@/lib/storage/r2-url";
 import { r2DeleteWithVariants } from "@/lib/storage/r2";
 import {
@@ -239,9 +240,35 @@ export async function startMemeJob(
   const aiExperimentalMinimalRaw = formData.get("aiExperimentalMinimal") as string | null;
   const latRaw = formData.get("lat") as string | null;
   const lngRaw = formData.get("lng") as string | null;
+  const remixedFromPostIdRaw = formData.get("remixedFromPostId") as
+    | string
+    | null;
 
   if (!croppedImageFile || !memeType || !pipeline || !projectId) {
     return { error: "Pflichtfelder fehlen" };
+  }
+
+  let remixedFromPostId: string | null = null;
+  if (remixedFromPostIdRaw?.trim()) {
+    const sourceId = remixedFromPostIdRaw.trim();
+    const { data: sourcePost } = await supabase
+      .from("posts")
+      .select("id, project_id")
+      .eq("id", sourceId)
+      .maybeSingle();
+    if (!sourcePost) {
+      return { error: "Quell-Post für Remix nicht gefunden" };
+    }
+    const { data: membership } = await supabase
+      .from("project_members")
+      .select("user_id")
+      .eq("project_id", sourcePost.project_id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!membership) {
+      return { error: "Kein Zugriff auf den Quell-Post" };
+    }
+    remixedFromPostId = sourceId;
   }
 
   if (pipeline === "manual" && memeType !== "canvas_overlay") {
@@ -315,6 +342,9 @@ export async function startMemeJob(
       ai_experimental_minimal: aiExperimentalMinimal,
       lat: lat && !isNaN(lat) ? lat : null,
       lng: lng && !isNaN(lng) ? lng : null,
+      ...(remixedFromPostId
+        ? { remixed_from_post_id: remixedFromPostId }
+        : {}),
     })
     .select("id")
     .single();
@@ -412,17 +442,14 @@ export async function getMemeRetryDraftAction(
     return { ok: false, error: "Post ist bereits veröffentlicht" };
   }
 
-  let originalSignedUrl: string;
-  let secondOriginalSignedUrl: string | null = null;
-  try {
-    originalSignedUrl = r2Url(normalizeR2Key(post.original_image_url), "full");
-    if (post.original_image_url_2) {
-      secondOriginalSignedUrl = r2Url(
-        normalizeR2Key(post.original_image_url_2),
-        "full",
-      );
-    }
-  } catch {
+  const originalSignedUrl = resolvePostMediaPublicUrl(
+    post.original_image_url,
+    "full",
+  );
+  const secondOriginalSignedUrl = post.original_image_url_2
+    ? resolvePostMediaPublicUrl(post.original_image_url_2, "full")
+    : null;
+  if (!originalSignedUrl) {
     return { ok: false, error: "Bild-Link konnte nicht erstellt werden" };
   }
 
@@ -526,8 +553,23 @@ export async function retryMemeJobFromDraftAction(
     if (quota.error) return { error: quota.error };
   }
 
-  const originalPath = postRow.original_image_url;
-  const existingOriginalPath2 = postRow.original_image_url_2 as string | null;
+  const originalPath = storageKeyFromPostMediaField(postRow.original_image_url);
+  if (!originalPath) {
+    return {
+      error:
+        "Gespeicherter Bildpfad ist ungültig – bitte prüfe die R2-Migration oder lade ein neues Foto hoch.",
+    };
+  }
+  const existingOriginalPath2Raw = postRow.original_image_url_2 as string | null;
+  const existingOriginalPath2 = existingOriginalPath2Raw
+    ? storageKeyFromPostMediaField(existingOriginalPath2Raw)
+    : null;
+  if (existingOriginalPath2Raw && !existingOriginalPath2) {
+    return {
+      error:
+        "Zweites Referenzfoto konnte nicht zugeordnet werden – bitte R2-Pfade in der Datenbank prüfen.",
+    };
+  }
   const imageBytes = await croppedImageFile.arrayBuffer();
   const imageBuffer = Buffer.from(imageBytes);
 
@@ -880,8 +922,9 @@ export async function discardUnpublishedMeme(
     }
   }
 
-  if (post.original_image_url) {
-    await r2DeleteWithVariants([normalizeR2Key(post.original_image_url)]);
+  const origKey = storageKeyFromPostMediaField(post.original_image_url);
+  if (origKey) {
+    await r2DeleteWithVariants([origKey]);
   }
 
   const { error: deleteError } = await supabase

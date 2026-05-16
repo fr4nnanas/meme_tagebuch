@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+/* Canvas-Meme: Impact mit System-Fallback (Text auf Foto / Alles selbst) */
+@font-face {
+  font-family: "Meme Impact";
+  src:
+    local("Impact"),
+    local("Impact Regular"),
+    local("Arial Black");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;

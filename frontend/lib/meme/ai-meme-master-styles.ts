@@ -132,7 +132,7 @@ export const EXPERIMENTAL_STYLIZATION_STYLES: Record<
       "Rendere die Szene als klassisches Ölgemälde mit sichtbarer Pinselstruktur und warmem Galerie-Licht; Motive aus dem Foto bleiben erkennbar, Meme-Texte klar lesbar auf Deutsch.",
   },
   van_gogh: {
-    label: "Post-Impressionismus / expressive Pinselstriche",
+    label: "Post-Impressionismus / expressive Pinselstriche (Van Gogh)",
     promptInset:
       "Interpretiere die Szene post-impressionistisch: wirbelnde Pinselstriche, kräftige Farben, expressive Konturen — ohne Motiv oder deutschen Meme-Text unleserlich zu machen.",
   },
@@ -142,12 +142,12 @@ export const EXPERIMENTAL_STYLIZATION_STYLES: Record<
       "Optik wie GTA San Andreas: leicht kantige 3D-Spielgrafik der PS2-Ära, satte Farben, urbaner Action-Look; erkennbare Foto-Motive und gut lesbare deutsche Meme-Beschriftung.",
   },
   gta_v: {
-    label: "Moderne Open-World-3D-Grafik",
+    label: "Moderne Open-World-3D-Grafik (GTA V)",
     promptInset:
       "Optik wie moderne Open-World-3D-Grafik: realistischere Spielwelt mit filmischer Beleuchtung; Motive aus dem Foto bleiben identifizierbar, Texte auf Deutsch klar lesbar.",
   },
   lego: {
-    label: "Klemmbausteine",
+    label: "Klemmbausteine (Lego)",
     promptInset:
       "Baue die Szene aus Klemmbausteinen: klare Noppen, modulare Formen, spielerischer Look; erkennbare Motive und deutsche Meme-Texte bleiben gut lesbar.",
   },
@@ -157,22 +157,22 @@ export const EXPERIMENTAL_STYLIZATION_STYLES: Record<
       "Inszeniere die Szene wie ein Ego-Shooter-Screenshot: HUD-Anmutung, waffenähnliche Perspektive oder Action-Frame — Motive aus dem Foto erkennbar, Meme-Text auf Deutsch gut lesbar.",
   },
   counter_strike: {
-    label: "Taktischer Shooter-Look",
+    label: "Taktischer Shooter-Look (Counter-Strike)",
     promptInset:
       "Visueller Look wie ein taktischer Ego-Shooter: Ego-Perspektive, kontrastreiche Map-Beleuchtung, leicht grittiger Action-Frame; Foto-Motive und deutsche Meme-Texte bleiben klar.",
   },
   anime: {
-    label: "Japanischer Zeichenfilmstil",
+    label: "Japanischer Zeichenfilmstil (Anime)",
     promptInset:
       "Zeichne die Szene im japanischen Zeichenfilmstil: klare Linien, zellulare Flächen, ausdrucksstarke Augen — Motive aus dem Foto erkennbar, deutsche Meme-Texte gut lesbar.",
   },
   studio_ghibli: {
-    label: "Sanfter Animations-Märchenlook",
+    label: "Sanfter Animations-Märchenlook (Studio Ghibli)",
     promptInset:
       "Stilisiere weich und detailreich wie ein handgezeichneter Animations-Märchenfilm: warme Naturfarben, malerische Flächen, verspielte Lichtstimmung; erkennbare Motive, deutsche Meme-Texte klar lesbar.",
   },
   minecraft_voxel: {
-    label: "Voxel / 8-Bit-Pixel",
+    label: "Voxel / 8-Bit-Pixel (Minecraft)",
     promptInset:
       "Rendere als Voxel- oder 8-Bit-Pixelwelt: blockige Formen, begrenzte Farbpalette, Retro-Charme — Motive aus dem Foto noch erkennbar, deutscher Meme-Text gut lesbar.",
   },
@@ -182,12 +182,12 @@ export const EXPERIMENTAL_STYLIZATION_STYLES: Record<
       "Gestalte als Comic oder Graphic Novel: kräftige Konturen, flächige Farben, optional Halbton oder Panel-Anmutung; erkennbare Motive, deutsche Meme-Texte klar und lesbar.",
   },
   vaporwave: {
-    label: "Retro-Neon-Ästhetik",
+    label: "Retro-Neon-Ästhetik (Vaporwave)",
     promptInset:
       "Nutze eine Retro-Neon-Ästhetik: Neon-Verläufe, Retro-PC- oder Mall-Vibes, leicht verträumte 80er/90er-Anmutung — Motive aus dem Foto erkennbar, deutscher Meme-Text gut lesbar.",
   },
   pixar_3d: {
-    label: "Hochwertiger 3D-Animationsfilmlook",
+    label: "Hochwertiger 3D-Animationsfilmlook (Pixar)",
     promptInset:
       "Rendere als hochwertigen 3D-Animationsfilm: weiche Formen, freundliches Licht, saubere Render-Optik; erkennbare Motive, deutsche Meme-Texte klar lesbar.",
   },

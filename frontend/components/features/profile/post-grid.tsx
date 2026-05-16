@@ -19,11 +19,12 @@ import {
   type PostStarRatingSnapshot,
 } from "@/components/shared/post-star-rating";
 import { GridPostThumbnail } from "@/components/shared/grid-post-thumbnail";
+import { PostRemixButton } from "@/components/shared/post-remix-button";
 import {
   POST_GRID_PAGE_SIZE,
   resolvePostGridThumbUrls,
 } from "@/lib/meme/post-grid-media";
-import { normalizeR2Key, safeR2Url } from "@/lib/storage/r2-url";
+import { resolvePostMediaPublicUrl } from "@/lib/storage/r2-url";
 import { fetchMyStarRatingsForPostIds } from "@/lib/meme/fetch-my-star-ratings";
 import { useLoadMoreOnIntersect } from "@/hooks/use-load-more-on-intersect";
 interface PostGridProps {
@@ -192,13 +193,11 @@ export function PostGrid({
             p.meme_image_url,
             p.original_image_url,
           );
-          const originalKey = normalizeR2Key(p.original_image_url);
-          const originalKey2 = p.original_image_url_2
-            ? normalizeR2Key(p.original_image_url_2)
-            : null;
           const originalSignedUrls = [
-            safeR2Url(originalKey, "full"),
-            ...(originalKey2 ? [safeR2Url(originalKey2, "full")] : []),
+            resolvePostMediaPublicUrl(p.original_image_url, "full"),
+            ...(p.original_image_url_2
+              ? [resolvePostMediaPublicUrl(p.original_image_url_2, "full")]
+              : []),
           ].filter((url): url is string => Boolean(url));
           return {
             ...p,
@@ -369,6 +368,9 @@ export function PostGrid({
                     <ImageIcon className="h-6 w-6" />
                   </div>
                 )}
+                {(post.signed_url || post.full_fallback_url) && (
+                  <PostRemixButton postId={post.id} />
+                )}
                 {isOwner && (
                   <button
                     type="button"
@@ -378,7 +380,7 @@ export function PostGrid({
                     }}
                     disabled={isDeleting}
                     aria-label="Post löschen"
-                    className="absolute right-1 top-1 z-20 flex h-7 w-7 touch-manipulation items-center justify-center rounded-full bg-zinc-950/75 text-zinc-200 shadow-md ring-1 ring-white/10 transition-colors hover:bg-red-600/90 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    className="absolute left-1 top-1 z-20 flex h-7 w-7 touch-manipulation items-center justify-center rounded-full bg-zinc-950/75 text-zinc-200 shadow-md ring-1 ring-white/10 transition-colors hover:bg-red-600/90 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isDeleting ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />

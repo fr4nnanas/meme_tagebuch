@@ -15,12 +15,13 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ImageIcon, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import { normalizeR2Key, safeR2Url } from "@/lib/storage/r2-url";
+import { resolvePostMediaPublicUrl } from "@/lib/storage/r2-url";
 import { deletePostAction } from "@/lib/actions/feed";
 import { ProfilePostDetailSheet } from "@/components/features/profile/profile-post-detail-sheet";
 import { useActiveProject } from "@/components/features/app/project-context";
 import { UserAvatarLightbox } from "@/components/shared/user-avatar-lightbox";
 import { GridPostThumbnail } from "@/components/shared/grid-post-thumbnail";
+import { PostRemixButton } from "@/components/shared/post-remix-button";
 import {
   POST_GRID_PAGE_SIZE,
   resolvePostGridThumbUrls,
@@ -219,13 +220,11 @@ export function ProjectMemeGrid({
           p.meme_image_url,
           p.original_image_url,
         );
-        const originalKey = normalizeR2Key(p.original_image_url);
-        const originalKey2 = p.original_image_url_2
-          ? normalizeR2Key(p.original_image_url_2)
-          : null;
         const originalSignedUrls = [
-          safeR2Url(originalKey, "full"),
-          ...(originalKey2 ? [safeR2Url(originalKey2, "full")] : []),
+          resolvePostMediaPublicUrl(p.original_image_url, "full"),
+          ...(p.original_image_url_2
+            ? [resolvePostMediaPublicUrl(p.original_image_url_2, "full")]
+            : []),
         ].filter((url): url is string => Boolean(url));
         return {
           ...p,
@@ -419,6 +418,9 @@ export function ProjectMemeGrid({
                       <div className="absolute inset-0 flex items-center justify-center text-zinc-700">
                         <ImageIcon className="h-6 w-6" />
                       </div>
+                    )}
+                    {(post.signed_url || post.full_fallback_url) && (
+                      <PostRemixButton postId={post.id} />
                     )}
                     {isPending && (
                       <span className="absolute bottom-1 left-1 z-10 rounded bg-zinc-800/90 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">

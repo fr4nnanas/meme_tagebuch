@@ -39,6 +39,7 @@ import {
   retryMemeJobFromDraftAction,
 } from "@/lib/actions/upload";
 import { useActiveProject } from "@/components/features/app/project-context";
+import { fetchRemoteImageBlob } from "@/lib/media/fetch-remote-image";
 
 type Step = "select" | "crop" | "chooseMode" | "configure" | "submitting";
 
@@ -201,12 +202,25 @@ export function UploadFlow() {
       }
 
       try {
-        const res = await fetch(draft.originalSignedUrl);
-        if (!res.ok) throw new Error("Bild konnte nicht geladen werden");
-        const blob = await res.blob();
+        const first = await fetchRemoteImageBlob(draft.originalSignedUrl);
+        if (!first.ok) throw new Error(first.message);
         if (cancelled) return;
-        setImageSrc(URL.createObjectURL(blob));
-        setCroppedBlob(blob);
+        setImageSrc(URL.createObjectURL(first.blob));
+        setCroppedBlob(first.blob);
+
+        if (draft.secondOriginalSignedUrl) {
+          const second = await fetchRemoteImageBlob(
+            draft.secondOriginalSignedUrl,
+          );
+          if (!second.ok) throw new Error(second.message);
+          if (cancelled) return;
+          setSecondImageSrc(URL.createObjectURL(second.blob));
+          setSecondCroppedBlob(second.blob);
+        } else {
+          setSecondImageSrc(null);
+          setSecondCroppedBlob(null);
+        }
+
         setPostingMode(postingModeFromDb(draft.memeType, draft.pipeline));
         const text = draft.pipelineInputText ?? "";
         if (draft.pipeline === "assisted") {
@@ -887,14 +901,14 @@ export function UploadFlow() {
                   ? "Stichworte werden nach Auswahl einer Idee nicht mehr verwendet. Es gilt nur die ausgewählte Idee."
                   : "Optional: Stichworte helfen beim Generieren weiterer Ideen und fließen in die automatische Ausarbeitung ein, solange du noch keine Konkret-Idee angeklickt hast."}
               </p>
-              <input
-                type="text"
+              <textarea
                 value={userText}
                 disabled={hintsLocked}
                 readOnly={hintsLocked}
                 onChange={(e) => setUserText(e.target.value)}
+                rows={4}
                 placeholder="z. B. Stichwörter für Stimmung & Kontext oder Insider-Witze"
-                className={`w-full rounded-xl border border-zinc-800 bg-zinc-800 px-4 py-3 text-sm outline-none placeholder-zinc-500 ${
+                className={`w-full resize-y rounded-xl border border-zinc-800 bg-zinc-800 px-4 py-3 text-sm outline-none placeholder-zinc-500 ${
                   hintsLocked
                     ? "cursor-not-allowed opacity-55 text-zinc-500 border-zinc-800/80"
                     : "text-zinc-100 focus:border-orange-500"

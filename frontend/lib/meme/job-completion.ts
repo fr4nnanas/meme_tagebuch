@@ -12,7 +12,7 @@ export function shouldOpenMemeCompletionUI(d: JobStatusResponse): boolean {
   if (
     d.memeType === "canvas_overlay" &&
     d.originalSignedUrl &&
-    (d.overlayTextTop || d.overlayTextBottom)
+    (d.overlayTextTop?.trim() || d.overlayTextBottom?.trim())
   ) {
     return true;
   }

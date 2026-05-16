@@ -143,6 +143,85 @@ export function isLegacySupabaseStorageUrl(value: string | null | undefined): bo
   return value.includes("/object/public/");
 }
 
+function storageKeyFromR2PublicUrl(trimmed: string): string | null {
+  const base = getR2PublicBase();
+  if (!base) return null;
+  const normalizedBase = base.replace(/\/$/, "");
+  if (!trimmed.startsWith(`${normalizedBase}/`)) return null;
+  const encodedPath = trimmed.slice(normalizedBase.length + 1);
+  try {
+    return normalizeR2Key(
+      encodedPath
+        .split("/")
+        .map((segment) => decodeURIComponent(segment))
+        .join("/"),
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Relativer Pfad, Supabase-Public-URL oder R2-Public-URL → konsistenter Object-Key
+ * (`originals/…` oder `memes/…`).
+ */
+export function storageKeyFromPostMediaField(
+  raw: string | null | undefined,
+): string | null {
+  if (!raw?.trim()) return null;
+  const trimmed = raw.trim();
+  try {
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      const u = new URL(trimmed);
+      for (const prefix of [R2_ORIGINAL_PREFIX, R2_MEMES_PREFIX] as const) {
+        const marker = `/object/public/${prefix}/`;
+        const i = u.pathname.indexOf(marker);
+        if (i !== -1) {
+          const rel = normalizeR2Key(
+            decodeURIComponent(u.pathname.slice(i + marker.length)),
+          );
+          return rel.startsWith(`${prefix}/`)
+            ? rel
+            : normalizeR2Key(`${prefix}/${rel}`);
+        }
+      }
+      const fromR2Host = storageKeyFromR2PublicUrl(trimmed);
+      if (fromR2Host) return fromR2Host;
+      const pathOnly = decodeURIComponent(u.pathname.replace(/^\/+/, ""));
+      if (
+        pathOnly.startsWith(`${R2_ORIGINAL_PREFIX}/`) ||
+        pathOnly.startsWith(`${R2_MEMES_PREFIX}/`)
+      ) {
+        const q = pathOnly.indexOf("?");
+        return q === -1 ? pathOnly : pathOnly.slice(0, q);
+      }
+      return null;
+    }
+  } catch {
+    return normalizeR2Key(trimmed);
+  }
+  const key = normalizeR2Key(trimmed);
+  if (
+    key.startsWith(`${R2_ORIGINAL_PREFIX}/`) ||
+    key.startsWith(`${R2_MEMES_PREFIX}/`)
+  ) {
+    return key;
+  }
+  return null;
+}
+
+/** Anzeige-URL für Post-Medien: Legacy-Supabase bleibt; sonst öffentlicher R2-Key. */
+export function resolvePostMediaPublicUrl(
+  raw: string | null | undefined,
+  variant: "thumb" | "feed" | "full" = "full",
+): string | null {
+  if (!raw?.trim()) return null;
+  const t = raw.trim();
+  if (isLegacySupabaseStorageUrl(t)) return t;
+  const key = storageKeyFromPostMediaField(t);
+  return key ? safeR2Url(key, variant) : null;
+}
+
 /** Extrahiert den Object-Key aus einer Supabase-Public-URL oder gibt normalisierten Pfad zurück. */
 export function storageKeyFromAvatarField(raw: string | null | undefined): string | null {
   if (!raw?.trim()) return null;

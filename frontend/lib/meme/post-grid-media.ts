@@ -1,4 +1,4 @@
-import { normalizeR2Key, safeR2Url } from "@/lib/storage/r2-url";
+import { resolvePostMediaPublicUrl } from "@/lib/storage/r2-url";
 
 export const POST_GRID_PAGE_SIZE = 60;
 
@@ -12,11 +12,9 @@ export function resolvePostGridThumbUrls(
   memeImageUrl: string | null,
   originalImageUrl: string,
 ): PostGridThumbUrls {
-  const originalKey = normalizeR2Key(originalImageUrl);
-  const memeKey = memeImageUrl ? normalizeR2Key(memeImageUrl) : null;
-  const primaryKey = memeKey ?? originalKey;
+  const primaryRaw = memeImageUrl ?? originalImageUrl;
   return {
-    thumb_url: safeR2Url(primaryKey, "thumb"),
-    full_fallback_url: safeR2Url(primaryKey, "full"),
+    thumb_url: resolvePostMediaPublicUrl(primaryRaw, "thumb"),
+    full_fallback_url: resolvePostMediaPublicUrl(primaryRaw, "full"),
   };
 }

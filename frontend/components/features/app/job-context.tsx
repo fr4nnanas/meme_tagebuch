@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import type { JobStatusResponse } from "@/app/api/meme/job-status/[jobId]/route";
+import { shouldOpenMemeCompletionUI } from "@/lib/meme/job-completion";
 
 interface ActiveJob {
   jobId: string;
@@ -57,7 +58,7 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
     setActiveJob(null);
     setJobFailure(null);
     setCompletedJobData(data);
-    setCompletionUiOpen((open) => open);
+    setCompletionUiOpen(shouldOpenMemeCompletionUI(data));
     if ((data.variantSignedUrls?.length ?? 0) >= 2) {
       setSecondVariantTrack(null);
     }

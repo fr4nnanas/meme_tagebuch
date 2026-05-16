@@ -10,6 +10,7 @@ import {
   MessageCircle,
   MoreVertical,
   Share2,
+  Shuffle,
   Trash2,
   X,
 } from "lucide-react";
@@ -68,6 +69,7 @@ export function FeedCard({
   const isOwner = post.user_id === currentUserId;
   const canDelete = isOwner || isAdmin;
   const canMoveMeme = Boolean(post.meme_image_url) && (isOwner || isAdmin);
+  const canRemix = Boolean(post.meme_full_url ?? post.signed_url);
 
   const [likeState, setLikeState] = useState<LikeState>({
     liked: post.liked_by_me,
@@ -242,57 +244,70 @@ export function FeedCard({
             </div>
           </Link>
 
-          {canDelete && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowMenu((v) => !v)}
-                aria-label="Post-Optionen"
-                className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-              >
-                <MoreVertical className="h-5 w-5" />
-              </button>
+          {(canRemix || canDelete) && (
+            <div className="flex shrink-0 items-center gap-0.5">
+              {canRemix && (
+                <Link
+                  href={`/remix?source=${post.id}`}
+                  aria-label="Remixen"
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-orange-400"
+                >
+                  <Shuffle className="h-5 w-5" />
+                </Link>
+              )}
+              {canDelete && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowMenu((v) => !v)}
+                    aria-label="Post-Optionen"
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+                  >
+                    <MoreVertical className="h-5 w-5" />
+                  </button>
 
-              {showMenu && (
-                <>
-                  <div
-                    className="fixed inset-0 z-10"
-                    onClick={() => setShowMenu(false)}
-                  />
-                  <div className="absolute right-0 top-10 z-20 min-w-[180px] overflow-hidden rounded-xl border border-zinc-800 bg-zinc-800 shadow-2xl">
-                    {isAdmin && !isOwner && (
-                      <p className="border-b border-zinc-800 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-orange-400">
-                        Admin-Aktion
-                      </p>
-                    )}
-                    {canMoveMeme && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowMenu(false);
-                          setMoveDialogOpen(true);
-                        }}
-                        className="flex w-full items-center gap-3 border-b border-zinc-800 px-4 py-3 text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
-                      >
-                        <FolderInput className="h-4 w-4 shrink-0 text-orange-400" />
-                        In anderes Projekt …
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleDeletePost}
-                      disabled={isDeletingPost}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-sm text-red-400 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {isDeletingPost ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                      Post löschen
-                    </button>
-                  </div>
-                </>
+                  {showMenu && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setShowMenu(false)}
+                      />
+                      <div className="absolute right-0 top-10 z-20 min-w-[180px] overflow-hidden rounded-xl border border-zinc-800 bg-zinc-800 shadow-2xl">
+                        {isAdmin && !isOwner && (
+                          <p className="border-b border-zinc-800 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-orange-400">
+                            Admin-Aktion
+                          </p>
+                        )}
+                        {canMoveMeme && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowMenu(false);
+                              setMoveDialogOpen(true);
+                            }}
+                            className="flex w-full items-center gap-3 border-b border-zinc-800 px-4 py-3 text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
+                          >
+                            <FolderInput className="h-4 w-4 shrink-0 text-orange-400" />
+                            In anderes Projekt …
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleDeletePost}
+                          disabled={isDeletingPost}
+                          className="flex w-full items-center gap-3 px-4 py-3 text-sm text-red-400 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isDeletingPost ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                          Post löschen
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           )}

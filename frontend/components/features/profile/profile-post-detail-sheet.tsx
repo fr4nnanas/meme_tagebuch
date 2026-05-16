@@ -41,6 +41,7 @@ import { getJobStatusForPostAction } from "@/lib/actions/meme-job";
 import type { JobStatusResponse } from "@/lib/meme/job-status-types";
 import { shouldOpenMemeCompletionUI } from "@/lib/meme/job-completion";
 import { MovePostProjectDialog } from "@/components/features/feed/move-post-project-dialog";
+import { PostRemixButton } from "@/components/shared/post-remix-button";
 
 interface ProfilePostDetailSheetProps {
   postId: string | null;
@@ -136,7 +137,7 @@ export function ProfilePostDetailSheet({
     setMoveDialogOpen(false);
     if (entryAsLightbox) {
       setLightboxOpen(true);
-      setSheetRevealed(true);
+      setSheetRevealed(false);
     } else {
       setLightboxOpen(false);
     }
@@ -512,6 +513,11 @@ export function ProfilePostDetailSheet({
             : (post?.original_signed_url ?? fallbackOriginalSrc ?? null)
         }
         historySync={!entryAsLightbox || sheetRevealed}
+        headerActions={
+          postId ? (
+            <PostRemixButton postId={postId} size="default" variant="inline" />
+          ) : null
+        }
         footer={
           postSocialActionsEl ||
           (entryAsLightbox && post) ||
@@ -537,7 +543,10 @@ export function ProfilePostDetailSheet({
                 <div className="flex justify-center border-t border-zinc-800/80 px-2 pb-1 pt-2">
                   <button
                     type="button"
-                    onClick={() => setLightboxOpen(false)}
+                    onClick={() => {
+                      setSheetRevealed(true);
+                      setLightboxOpen(false);
+                    }}
                     className="text-xs font-medium text-zinc-400 underline-offset-2 hover:text-orange-400 hover:underline"
                   >
                     Alle Details & Kommentare

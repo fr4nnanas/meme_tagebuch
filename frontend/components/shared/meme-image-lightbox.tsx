@@ -31,6 +31,8 @@ export interface MemeImageLightboxProps {
   historySync?: boolean;
   /** z. B. Like/Kommentar/Teilen — unter dem Bild, wie im Feed */
   footer?: ReactNode;
+  /** Aktionen in der Kopfzeile neben Schließen (z. B. Remix) */
+  headerActions?: ReactNode;
 }
 
 export function MemeImageLightbox({
@@ -42,6 +44,7 @@ export function MemeImageLightbox({
   originalAlt = "Originalfoto",
   historySync = true,
   footer,
+  headerActions,
 }: MemeImageLightboxProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(0);
@@ -160,7 +163,8 @@ export function MemeImageLightbox({
       />
 
       <div className="relative z-10 flex max-h-[min(92dvh,960px)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-zinc-700/80 bg-zinc-900 shadow-2xl ring-1 ring-black/30 sm:max-w-lg">
-        <div className="flex shrink-0 items-center justify-end border-b border-zinc-800/90 bg-zinc-900/95 px-1.5 py-1">
+        <div className="flex shrink-0 items-center justify-end gap-1 border-b border-zinc-800/90 bg-zinc-900/95 px-1.5 py-1">
+          {headerActions}
           <button
             type="button"
             onClick={requestClose}

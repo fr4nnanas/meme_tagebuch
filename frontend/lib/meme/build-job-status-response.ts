@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { normalizeR2Key, r2Url } from "@/lib/storage/r2-url";
+import {
+  normalizeR2Key,
+  resolvePostMediaPublicUrl,
+  r2Url,
+} from "@/lib/storage/r2-url";
 import type { JobStatusResponse } from "@/lib/meme/job-status-types";
 import type { JobResult } from "@/lib/meme/process-job";
 
@@ -81,17 +85,9 @@ export async function buildJobStatusResponse(
       .eq("id", job.post_id!)
       .maybeSingle();
 
-    let originalSignedUrl: string | undefined;
-    if (post?.original_image_url) {
-      try {
-        originalSignedUrl = r2Url(
-          normalizeR2Key(post.original_image_url),
-          "full",
-        );
-      } catch {
-        originalSignedUrl = undefined;
-      }
-    }
+    const originalSignedUrl = post?.original_image_url
+      ? (resolvePostMediaPublicUrl(post.original_image_url, "full") ?? undefined)
+      : undefined;
 
     return {
       ...base,

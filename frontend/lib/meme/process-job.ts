@@ -1,5 +1,9 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
-import { memeAiVariantObjectKey, normalizeR2Key } from "@/lib/storage/r2-url";
+import {
+  memeAiVariantObjectKey,
+  normalizeR2Key,
+  storageKeyFromPostMediaField,
+} from "@/lib/storage/r2-url";
 import { r2Get } from "@/lib/storage/r2";
 import { uploadMemeJpegWithWebpVariants } from "@/lib/storage/image-pipeline";
 import { compositeReferenceJpegs } from "@/lib/storage/reference-composite";
@@ -65,9 +69,15 @@ export type JobResult =
       overlayTextBottom: string;
     };
 
+function resolveOriginalStorageKey(originalPath: string): string {
+  return (
+    storageKeyFromPostMediaField(originalPath) ?? normalizeR2Key(originalPath)
+  );
+}
+
 async function downloadOriginalBuffer(originalPath: string): Promise<Buffer> {
   try {
-    return await r2Get(normalizeR2Key(originalPath));
+    return await r2Get(resolveOriginalStorageKey(originalPath));
   } catch {
     throw new Error("Original-Bild konnte nicht geladen werden");
   }

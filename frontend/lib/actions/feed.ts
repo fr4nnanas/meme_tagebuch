@@ -10,7 +10,8 @@ import {
   R2_AVATARS_PREFIX,
   R2_MEMES_PREFIX,
   R2_ORIGINAL_PREFIX,
-  r2Url,
+  resolvePostMediaPublicUrl,
+  storageKeyFromPostMediaField,
 } from "@/lib/storage/r2-url";
 import { r2Delete, r2DeleteWithVariants, r2PutCopyFromBuffer } from "@/lib/storage/r2";
 
@@ -76,19 +77,22 @@ function buildPublicMediaUrls(
   original_signed_url: string | null;
   original_signed_urls: string[];
 } {
-  const orig = normalizeR2Key(originalPathRaw);
-  const orig2 = originalPath2Raw ? normalizeR2Key(originalPath2Raw) : null;
-  const meme = memePathRaw ? normalizeR2Key(memePathRaw) : null;
-  const original_signed_urls = [r2Url(orig, "full"), ...(orig2 ? [r2Url(orig2, "full")] : [])];
-  const original_signed_url = original_signed_urls[0] ?? null;
-  const originalThumb = r2Url(orig, "thumb");
-  if (meme) {
+  const original_signed_url =
+    resolvePostMediaPublicUrl(originalPathRaw, "full");
+  const original_signed_urls = [
+    original_signed_url,
+    ...(originalPath2Raw
+      ? [resolvePostMediaPublicUrl(originalPath2Raw, "full")]
+      : []),
+  ].filter((u): u is string => Boolean(u));
+
+  if (memePathRaw) {
     return {
-      signed_url: r2Url(meme, "feed"),
-      meme_full_url: r2Url(meme, "full"),
-      meme_thumb_url: r2Url(meme, "thumb"),
-      thumbnail_url: r2Url(meme, "thumb"),
-      original_signed_url,
+      signed_url: resolvePostMediaPublicUrl(memePathRaw, "feed"),
+      meme_full_url: resolvePostMediaPublicUrl(memePathRaw, "full"),
+      meme_thumb_url: resolvePostMediaPublicUrl(memePathRaw, "thumb"),
+      thumbnail_url: resolvePostMediaPublicUrl(memePathRaw, "thumb"),
+      original_signed_url: original_signed_url ?? null,
       original_signed_urls,
     };
   }
@@ -96,8 +100,8 @@ function buildPublicMediaUrls(
     signed_url: null,
     meme_full_url: null,
     meme_thumb_url: null,
-    thumbnail_url: originalThumb,
-    original_signed_url,
+    thumbnail_url: resolvePostMediaPublicUrl(originalPathRaw, "thumb"),
+    original_signed_url: original_signed_url ?? null,
     original_signed_urls,
   };
 }
@@ -898,17 +902,12 @@ export async function deletePostAction(postId: string): Promise<{ error?: string
     }
 
     const dels: Promise<unknown>[] = [];
-    if (post.meme_image_url) {
-      dels.push(r2DeleteWithVariants([normalizeR2Key(post.meme_image_url)]));
-    }
-    if (post.original_image_url) {
-      dels.push(r2DeleteWithVariants([normalizeR2Key(post.original_image_url)]));
-    }
-    if (post.original_image_url_2) {
-      dels.push(
-        r2DeleteWithVariants([normalizeR2Key(post.original_image_url_2)]),
-      );
-    }
+    const memeKey = storageKeyFromPostMediaField(post.meme_image_url);
+    const origKey = storageKeyFromPostMediaField(post.original_image_url);
+    const orig2Key = storageKeyFromPostMediaField(post.original_image_url_2);
+    if (memeKey) dels.push(r2DeleteWithVariants([memeKey]));
+    if (origKey) dels.push(r2DeleteWithVariants([origKey]));
+    if (orig2Key) dels.push(r2DeleteWithVariants([orig2Key]));
     await Promise.all(dels);
 
     const { error } = await supabase
@@ -999,9 +998,15 @@ async function collectLogicalPrimaryPathsToRelocate(
   originalPath2?: string | null,
 ): Promise<Set<string>> {
   const keys = new Set<string>();
-  const normO = normalizeR2Key(originalPath);
-  const normO2 = originalPath2 ? normalizeR2Key(originalPath2) : null;
-  const normM = memePath ? normalizeR2Key(memePath) : null;
+  const normO =
+    storageKeyFromPostMediaField(originalPath) ?? normalizeR2Key(originalPath);
+  const normO2 = originalPath2
+    ? (storageKeyFromPostMediaField(originalPath2) ??
+      normalizeR2Key(originalPath2))
+    : null;
+  const normM = memePath
+    ? (storageKeyFromPostMediaField(memePath) ?? normalizeR2Key(memePath))
+    : null;
 
   const orgScope = `${R2_ORIGINAL_PREFIX}/${oldProjectId}/${authorId}/`;
   const memScope = `${R2_MEMES_PREFIX}/${oldProjectId}/${authorId}/`;
@@ -1140,15 +1145,22 @@ export async function movePostToProjectAction(
     };
   }
 
+  const origKey =
+    storageKeyFromPostMediaField(post.original_image_url as string) ??
+    normalizeR2Key(post.original_image_url as string);
   const newOriginal = remapStoredPostObjectKey(
-    normalizeR2Key(post.original_image_url as string),
+    origKey,
     oldProjectId,
     targetProjectId,
     authorId,
   );
-  const newOriginal2 = post.original_image_url_2
+  const orig2Key = post.original_image_url_2
+    ? (storageKeyFromPostMediaField(post.original_image_url_2 as string) ??
+      normalizeR2Key(post.original_image_url_2 as string))
+    : null;
+  const newOriginal2 = orig2Key
     ? remapStoredPostObjectKey(
-        normalizeR2Key(post.original_image_url_2 as string),
+        orig2Key,
         oldProjectId,
         targetProjectId,
         authorId,
@@ -1157,8 +1169,11 @@ export async function movePostToProjectAction(
   if (post.original_image_url_2 && !newOriginal2) {
     return { error: "Zweites Referenzfoto konnte nicht auf das Zielprojekt abgebildet werden." };
   }
+  const memeKey =
+    storageKeyFromPostMediaField(post.meme_image_url as string) ??
+    normalizeR2Key(post.meme_image_url as string);
   const newMeme = remapStoredPostObjectKey(
-    normalizeR2Key(post.meme_image_url as string),
+    memeKey,
     oldProjectId,
     targetProjectId,
     authorId,

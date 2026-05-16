@@ -180,7 +180,8 @@ export function JobCompletionHandler() {
   if (
     completedJobData.memeType === "canvas_overlay" &&
     completedJobData.originalSignedUrl &&
-    (completedJobData.overlayTextTop || completedJobData.overlayTextBottom)
+    (completedJobData.overlayTextTop?.trim() ||
+      completedJobData.overlayTextBottom?.trim())
   ) {
     return (
       <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center sm:p-4">
@@ -204,7 +205,7 @@ export function JobCompletionHandler() {
             </button>
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-1 pt-4">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-2 pt-2">
             <CanvasMemePreview
               originalImageUrl={completedJobData.originalSignedUrl}
               overlayTextTop={completedJobData.overlayTextTop ?? null}
